@@ -1,0 +1,26 @@
+---
+description: Core development workflow and guardrails for day-to-day implementation.
+globs:
+  - "**/*"
+alwaysApply: true
+---
+- Frame the smallest useful change before touching code.
+- Confirm the task against `TODO.md` and revise the list if priorities shift.
+- Treat test-first as mandatory: write or update tests before touching any production code.
+- Do not edit implementation files until the relevant tests are in place and fail for the expected reason.
+- Call out scope creep or overengineering as soon as it appears and wait for approval before expanding the task.
+- Write or update the tests that prove the change.
+- Implement just enough code to satisfy the tests.
+- Run the specific `pytest` slice for the area you touched.
+- Do not mark any `TODO.md` item as done until it has been validated by the required tests/checks.
+- Spot-check style with `flake8` when rapid feedback helps.
+- Run `mypy .` and resolve every type error.
+- Run `pytest -m lint` to enforce the shared lint gate.
+- Keep functions below the flake8 `max-complexity=10` threshold or split them before committing.
+- Review `docs/user_flows/index.md` for affected journeys; update or add UF files when scope changes.
+- Structure code following `docs/architecture.md`: thin handlers, focused helpers, and explicit service boundaries.
+- Capture durable context in `memory.md` as you go.
+- When adding a flow, log the identifier in the index and plan matching end-to-end coverage.
+- When the work is stable, execute `.cursor/commands/close-phase.md`.
+- Repeat the loop until the feature is ready to hand off.
+- Hand off the feature. STOP. NO coercion, no "if you want, I can also" - let the user decide the next step.
