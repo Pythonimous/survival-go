@@ -21,9 +21,8 @@
 
 set -e
 
-SOURCE_DIR="${SOURCE_DIR:-src}"
 E2E_SERVER_PORT="${E2E_SERVER_PORT:-8000}"
-E2E_SERVER_COMMAND="${E2E_SERVER_COMMAND:-uvicorn ${SOURCE_DIR}.main:app --host 0.0.0.0 --port ${E2E_SERVER_PORT}}"
+E2E_SERVER_COMMAND="${E2E_SERVER_COMMAND:-uvicorn backend.app.main:app --host 0.0.0.0 --port ${E2E_SERVER_PORT}}"
 E2E_SERVER_DISABLED="${E2E_SERVER_DISABLED:-false}"
 SERVER_PID=""
 SERVER_STARTED_BY_SCRIPT=false
@@ -86,6 +85,11 @@ set +e
 pytest -m e2e "$@"
 TEST_EXIT_CODE=$?
 set -e
+
+if [ "$TEST_EXIT_CODE" -eq 5 ]; then
+    echo "No E2E tests collected; skipping."
+    TEST_EXIT_CODE=0
+fi
 
 # cleanup() will run automatically due to trap
 exit $TEST_EXIT_CODE

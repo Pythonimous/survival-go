@@ -22,7 +22,7 @@ Local-first web prototype for a Go training variant built around **total board o
 
 This repo started from a lightweight Python agent template. It includes:
 
-- **Testing:** `pytest` with `unit`, `integration`, `e2e`, and `lint` markers; shared fixtures in `tests/conftest.py`.
+- **Testing:** `./scripts/run_tests.sh` (or `make test-*`) for unit, integration, e2e, lint, and type checks; see `tests/README.md`. CI: `.github/workflows/ci.yml`.
 - **Linting & types:** `flake8` (including `max-complexity=10`) and `mypy` via `pytest -m lint` and project config.
 - **Architecture:** Layered layout and boundaries described in `docs/architecture.md` (thin handlers, focused services).
 - **User flows:** Journey templates under `docs/user_flows/`; log new flows in `docs/user_flows/index.md`.
@@ -38,6 +38,7 @@ KataGo supplies normal-Go understanding and ownership predictions; the Survival 
 
 ## References
 
+- **KataGo (WSL / Linux):** `docs/development/katago-wsl-linux.md`
 - Development workflow: `.github/instructions/development.instructions.md`
 - Testing workflow: `.github/instructions/testing.instructions.md`
 - Architecture: `docs/architecture.md`

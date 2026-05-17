@@ -3,7 +3,7 @@
 
 set -e
 
-SOURCE_DIR="${SOURCE_DIR:-src}"
+SOURCE_DIR="${SOURCE_DIR:-backend}"
 
 function show_help() {
     cat << EOF
@@ -53,7 +53,7 @@ case "${1:-}" in
         ;;
     coverage)
         echo "Running tests with coverage..."
-    pytest -m "unit or integration" --cov="${SOURCE_DIR}" --cov-report=term-missing --cov-report=html
+        pytest -m "unit or integration" --cov="${SOURCE_DIR}" --cov-report=term-missing --cov-report=html
         echo ""
         echo "Coverage report generated in htmlcov/index.html"
         ;;

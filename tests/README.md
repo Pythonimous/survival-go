@@ -13,28 +13,27 @@ tests/
 
 ## Running Tests
 
-- **Unit tests:**
-  ```bash
-  pytest -m unit
-  ```
-- **Integration tests:**
-  ```bash
-  pytest -m integration
-  ```
-- **E2E tests (requires server running):**
-  ```bash
-  pytest -m e2e
-  # Or use the helper script:
-  ./scripts/run_e2e_tests.sh [--headed] [--browser <chromium|firefox|webkit>]
-  ```
-- **All non-E2E tests:**
-  ```bash
-  pytest -m "unit or integration"
-  ```
-- **Lint checks:**
-  ```bash
-  pytest -m lint
-  ```
+Use `./scripts/run_tests.sh <command>` or equivalent `make` targets:
+
+| Command / target | What it runs |
+|------------------|--------------|
+| `unit` / `make test-unit` | `pytest -m unit` |
+| `integration` / `make test-integration` | `pytest -m integration` |
+| `e2e` / `make test-e2e` | `./scripts/run_e2e_tests.sh` (skips if no E2E tests yet) |
+| `lint` / `make test-lint` | `pytest -m lint` |
+| `types` / `make test-types` | `mypy .` |
+| `fast` / `make test-fast` | unit + integration |
+| `all` / `make test-all` | lint, types, unit, integration |
+| `full` / `make test-full` | `all` + e2e |
+
+CI runs the same commands in `.github/workflows/ci.yml` (parallel jobs per check).
+
+Direct `pytest` invocations still work, for example:
+
+```bash
+pytest -m unit
+pytest -m "unit or integration"
+```
 
 ## Markers
 - `@pytest.mark.unit` for unit tests

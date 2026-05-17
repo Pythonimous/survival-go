@@ -81,3 +81,15 @@ Thumbs.db
 
 # Local data
 /data/*.db
+
+# Local secrets and KataGo artifacts (large downloads)
+.env
+third_party/katago/katago
+third_party/katago/*.zip
+third_party/katago/*.bin.gz
+third_party/katago/analysis_logs/
+analysis_logs/
+
+# Node
+node_modules/
+frontend/dist/

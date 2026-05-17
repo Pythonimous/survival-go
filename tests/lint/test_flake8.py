@@ -10,7 +10,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 @pytest.mark.lint
 def test_flake8_conformance():
     app = flake8_app.Application()
-    source_dir = PROJECT_ROOT / os.getenv("SOURCE_DIR", "src")
+    source_dir = PROJECT_ROOT / os.getenv("SOURCE_DIR", "backend")
     targets = [str(PROJECT_ROOT / "tests")]
     if source_dir.exists():
         targets.insert(0, str(source_dir))
