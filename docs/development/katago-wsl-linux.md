@@ -161,4 +161,5 @@ Symptoms: immediate exit, parse errors, or nonsense ownership. Use a **kata1** `
 
 - [KataGo Analysis Engine](https://github.com/lightvector/KataGo/blob/master/docs/Analysis_Engine.md)
 - [KataGo releases](https://github.com/lightvector/KataGo/releases)
+- [Third-party notices (KataGo license and attribution)](../../THIRD_PARTY_NOTICES.md)
 - [kata1 networks](https://katagotraining.org/networks/)

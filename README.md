@@ -38,6 +38,10 @@ White wins if White can prevent Black from achieving 100% board ownership.
 
 KataGo supplies normal-Go understanding and ownership predictions; the Survival evaluator reinterpretes them for this asymmetric objective. The first milestone is a local web app where a human plays either side against the engine.
 
+## License
+
+This repository is licensed under the [MIT License](LICENSE). **KataGo** (MIT), **sgfmill**, **React**, **Shudan**, and other dependencies are credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). KataGo binaries and neural nets are downloaded separately at setup — they are not shipped in git.
+
 ## References
 
 - **Environment variables:** `docs/development/environment.md`
