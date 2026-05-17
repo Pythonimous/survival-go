@@ -2,7 +2,7 @@
 
 ## Scaffold (2026-05-16)
 
-- `backend/app/main.py`: minimal FastAPI app (`survival-katago`), CORS for Vite on port 5173.
+- `backend/app/main.py`: minimal FastAPI app (`survival-go`), CORS for Vite on port 5173.
 - `frontend/`: React 19 + TypeScript + Vite 6; proxy `/api` and `/health` to backend :8000.
 - Run scripts: `scripts/run_backend.sh`, `scripts/run_frontend.sh` (frontend script runs `npm install` if needed).
 - Python deps in `requirements.txt`; use `.venv` at repo root. `tests/conftest.py` adds project root to `sys.path`.
@@ -17,7 +17,7 @@
 
 ## Health endpoint (2026-05-16)
 
-- `GET /health` returns `{"status":"ok","service":"survival-katago"}` (`HealthResponse` in `backend/app/main.py`).
+- `GET /health` returns `{"status":"ok","service":"survival-go"}` (`HealthResponse` in `backend/app/main.py`).
 - `tests/unit/test_health.py`: TestClient unit test plus uvicorn subprocess smoke on port 8765.
 
 ## KataGo subprocess client (2026-05-16)
@@ -221,10 +221,39 @@
   - `pytest tests/integration/test_katago_game_api.py tests/integration/test_katago_smoke.py -m integration`
   - `pytest -m "unit or integration"`, `mypy .`, `pytest -m lint`
 
+## Frontend Shudan setup (2026-05-17)
+
+- Added `@sabaki/shudan` to `frontend/package.json`; `npm install` produces `frontend/package-lock.json`.
+- `frontend/src/main.tsx` imports `@sabaki/shudan/css/goban.css`.
+- Vite aliases `preact` → `frontend/src/shims/preact/` (directory with `index.ts` + `hooks.ts` re-exporting React APIs). Required because Vite cannot alias `preact/hooks` directly to `react` (missing `./hooks` export).
+- `frontend/src/lib/shudan.tsx`: React 19–compatible `Goban` wrapper (`Sign`, `SignMap`, `Vertex` types).
+- `frontend/src/components/GobanBoard.tsx`: renders empty 19×19 board in `App.tsx`.
+- `tests/unit/test_frontend_shudan.py`: package/vite/component checks plus `npm run build` (auto-runs `npm install` if `node_modules` missing; fails if `npm` unavailable — no skip).
+- Validation: `pytest tests/unit/test_frontend_shudan.py -m unit`, `npm run build` in `frontend/`, full `pytest -m "unit or integration"`, `mypy .`, `pytest -m lint`.
+
+## Frontend GTP ↔ Shudan coordinates (2026-05-17)
+
+- `frontend/src/lib/coordinates.ts`: GTP parse/format (A–T without I, row 0 = bottom), sgfmill ↔ Shudan vertex (`[x, y]`, y 0 at top), `signMapFromStones` for API `{move, color}` stones.
+- `frontend/scripts/coordinate_cli.ts`: JSON CLI invoked by pytest via `npx tsx`.
+- `tests/unit/test_frontend_coordinates.py`: 55 tests cross-checking backend `parse_gtp_coordinate` / `format_gtp_coordinate` and live TS exports.
+- `frontend/package.json`: added `tsx` devDependency for coordinate CLI in tests.
+- `GobanBoard.tsx` uses `emptySignMap` from `coordinates.ts`.
+- Validation: `pytest tests/unit/test_frontend_coordinates.py -m unit`, `npm run build`, `pytest -m lint`, `python -m mypy .`, `pytest -m unit` pass.
+
 ## Close phase — backend + KataGo (2026-05-17)
 
 - Sections 1–3 in `TODO.md` complete: scaffold, core API, and KataGo integration (analyze + engine-move with `KATAGO_TOP_N`, live integration tests).
-- Next work: section 4 (frontend/UX), then integration hardening (section 5), non-functional (section 6), docs (section 7).
+- Section 4 in progress: component tests for preset/side/board click done; next: game setup UI wired to API.
+
+## Frontend component tests (2026-05-17)
+
+- Vitest + Testing Library + jsdom in `frontend/` (`npm test`, `vitest.config.ts` with preact alias).
+- `frontend/src/components/GameSetup.tsx`: preset radios, human side (B/W); any color allowed. Preset `PL[W]` honored at create; `BoardView` auto `engine-move` when human is Black on empty board.
+- `frontend/src/components/GobanBoard.tsx`: `onGtpClick` converts Shudan `onVertexClick` vertices via `vertexToGtp`.
+- `frontend/src/types/api.ts`: shared `PresetMetadata`, `CreateGamePayload`, `StoneColor`.
+- Vitest: `GameSetup.test.tsx` (6), `GobanBoard.test.tsx` (2, mocks Shudan).
+- `tests/unit/test_frontend_components.py`: pytest invokes `npm test` plus source checks.
+- Validation: `npm test`, `pytest tests/unit/test_frontend_components.py -m unit`, `pytest -m lint`, `python -m mypy .`, `npm run build`.
 - E2E skipped: no UF flows beyond template; UI not implemented.
 - `analysis_logs/` gitignored (KataGo writes logs to repo cwd per `analysis.cfg`).
 - Live KataGo integration tests require subprocess access outside the default sandbox; use `.venv/bin/python -m pytest` (system `pytest` shim may be broken on WSL).
@@ -232,3 +261,300 @@
   - `pytest -m lint`
   - `mypy .`
   - `pytest -m "unit or integration"` (132 passed, 1 skipped; live KataGo tests when `.env` configured)
+
+## Frontend game setup API wiring (2026-05-17)
+
+- `frontend/src/App.tsx` now owns setup flow state: fetches presets from `GET /api/presets`, renders `GameSetup`, posts `CreateGamePayload` to `POST /api/games`, and surfaces load/create errors.
+- `frontend/src/App.test.tsx` added (2 tests): verifies startup preset fetch and submit payload for game creation.
+- `TODO.md` section 4 item "Implement game setup UI ... wired to `POST /api/games`" marked complete.
+- Validation run locally:
+  - `cd frontend && npm test -- App.test.tsx` (fails first, then passes after implementation)
+  - `cd frontend && npm test` (all frontend tests pass: 10/10)
+  - `ReadLints` clean for `frontend/src/App.tsx` and `frontend/src/App.test.tsx`
+- Environment blockers on this machine:
+  - `pytest -m lint` fails due to broken shim path (`/mnt/c/Users/Kirill/.pyenv/pyenv-win/shims/pytest`)
+  - `mypy .` fails due to broken shim path (`/mnt/c/Users/Kirill/.pyenv/pyenv-win/shims/mypy`)
+
+## Frontend BoardView move wiring (2026-05-17)
+
+- Added `frontend/src/components/BoardView.tsx`:
+  - Fetches `GET /api/games/{game_id}` on mount.
+  - Builds Shudan `signMap` from API `stones` via `signMapFromStones`.
+  - Sends human clicks as `POST /api/games/{game_id}/move` and updates board state from API response.
+  - Shows API error feedback (`detail` when present) with `role="alert"`.
+- `frontend/src/types/api.ts` now includes shared `GameState`, `MoveResponse`, and `ApiStone` types.
+- `frontend/src/App.tsx` now renders `BoardView` after successful game creation instead of an always-empty board.
+- Tests:
+  - New `frontend/src/components/BoardView.test.tsx` (3 tests): load state/signMap, click-to-move POST payload, and move error feedback.
+  - Updated `frontend/src/App.test.tsx` for the additional game-state fetch after create.
+- Validation run:
+  - `cd frontend && npm test -- BoardView.test.tsx App.test.tsx` (pass)
+  - Python gates remain blocked by environment shims (`pytest`/`mypy` on pyenv-win path); no repo code fix applied here.
+
+## Frontend game-state refresh after moves (2026-05-17)
+
+- `frontend/src/components/BoardView.tsx` now uses a shared `loadGameState()` fetch helper for `GET /api/games/{game_id}` on mount and after successful `POST /api/games/{game_id}/move`.
+- Move submission no longer trusts the move POST payload as the final UI state; it refreshes from the backend source-of-truth game state.
+- `frontend/src/components/BoardView.test.tsx` updated to assert post-move fetch refresh (`3rd` call is `GET /api/games/game-1`).
+- `TODO.md` section 4 item "Implement game state fetch path via `GET /api/games/{game_id}` (refresh after moves; polling optional)." marked complete.
+- Validation run:
+  - `npm --prefix frontend test -- BoardView.test.tsx --run` (pass)
+  - `npm --prefix frontend test -- App.test.tsx BoardView.test.tsx --run` (pass)
+  - `.venv/bin/python -m mypy .` (pass)
+  - `.venv/bin/python -m pytest -m lint` (pass)
+
+## Frontend move controls + engine move request (2026-05-17)
+
+- `frontend/src/components/BoardView.tsx` now includes explicit controls:
+  - board clicks set a pending move (input value), they no longer auto-submit.
+  - `Submit move` posts `POST /api/games/{game_id}/move` with `{ move }`, then refreshes state via `GET /api/games/{game_id}`.
+  - `Engine move` posts `POST /api/games/{game_id}/engine-move`, then refreshes state via `GET /api/games/{game_id}`.
+- `frontend/src/components/BoardView.test.tsx` updated:
+  - human move path now asserts submit-button flow after selecting a board vertex.
+  - added engine move control test covering `/engine-move` POST and state refresh.
+  - updated move-error test to submit through new controls.
+- `TODO.md` section 4 item "Implement controls for human move submission and engine move request." marked complete.
+- Validation run:
+  - `npm --prefix frontend test -- BoardView.test.tsx App.test.tsx --run` (pass)
+  - `.venv/bin/python -m pytest tests/unit/test_frontend_components.py -m unit` (pass)
+  - `.venv/bin/python -m mypy .` (pass)
+  - `.venv/bin/python -m pytest -m lint` (pass)
+  - `ReadLints` clean for updated frontend files.
+
+## Frontend engine reasoning metrics (2026-05-17)
+
+- Backend `POST /api/games/{game_id}/engine-move` now returns `EngineMoveResponse` with `survival_score`, `metrics`, and ranked `candidates` (move, survival_score, min_black_probability).
+- `CandidateMove` extended with `min_black_probability`; `InMemoryGameService.apply_engine_move` returns `EngineMoveResult`.
+- Frontend:
+  - `frontend/src/components/EngineReasoning.tsx`: metrics panel + candidate comparison table (selected row highlighted).
+  - `BoardView`: `Analyze position` button (`POST /analyze`) and reasoning panel after analyze/engine move.
+  - Types in `frontend/src/types/api.ts`: `SurvivalMetrics`, `CandidateSummary`, `AnalyzeResponse`, `EngineMoveResponse`.
+- Tests: `EngineReasoning.test.tsx` (2), `BoardView.test.tsx` (+2 analyze/engine reasoning), `test_api_lifecycle.py` asserts engine-move payload shape.
+- `TODO.md` section 4 complete (UF-3 metrics + candidate table in UI).
+- Validation: `npm test` (18/18), `pytest tests/unit/test_frontend_components.py -m unit`, `pytest tests/integration/test_api_lifecycle.py -m integration`, `mypy .`, `pytest -m lint` pass; live KataGo integration tests require local `.env` + subprocess outside sandbox.
+
+## Frontend auto-play on board click (2026-05-17)
+
+- `BoardView`: board click on human turn chains `POST /move` then `POST /engine-move` and refreshes state; `onGtpClick` omitted when not human turn or turn in progress.
+- Removed manual Submit move / Engine move controls; kept Analyze position.
+- `BoardView.test.tsx`: auto-play flow, engine-turn ignore, error on failed human move.
+- `TODO.md` section 4.1 first item complete.
+
+## Local run documentation (2026-05-17)
+
+- `docs/development/local-run.md`: end-to-end local run guide (venv, KataGo, two-terminal start, UF-1–UF-3 validation checklist, API curl smoke, troubleshooting).
+- `README.md` Quick Start points at local-run doc; References section links it.
+- `tests/unit/test_local_run_docs.py`: asserts doc/README cover required scripts, ports, and paths.
+- `TODO.md` section 5 first item complete.
+
+## Engine resignation on Survival thresholds (2026-05-17)
+
+- `backend/app/engine/resignation.py`: `should_engine_resign` — Black engine resigns when `min_black_probability < 0.01`; White when `> 0.99`.
+- `InMemoryGameService.apply_engine_move`: analyzes current position before candidate search; on resign sets `status=finished`, `winner=human_side`, skips stone play; `EngineMoveResult.resigned=True`, `move=""`.
+- API: `GameStateResponse` adds `status`, `winner`; `EngineMoveResponse` adds `resigned`.
+- Frontend `BoardView`: shows resignation banner, disables board when `status === "finished"`.
+- Tests: `test_engine_resignation.py`, game service resign/reject-finished cases, `test_api_lifecycle` integration for white opening resign.
+- `TODO.md` section 4.1 resignation item complete.
+
+## Difficulty presets + advanced tuning (2026-05-17)
+
+- Backend `backend/app/difficulty.py` now owns difficulty schema and built-in presets (`easy`, `normal`, `hard`, `impossible`), exposed by `GET /api/difficulty-presets`.
+- API contract:
+  - `POST /api/games` accepts optional `difficulty`.
+  - Game state responses include `difficulty`.
+- `InMemoryGameService` stores `GameState.difficulty` per session and uses it for all KataGo calls:
+  - `max_visits` for analyze + candidate evaluation,
+  - `top_n` for candidate truncation,
+  - `randomness` for probabilistic non-top move selection from ranked shortlist.
+- Randomness policy: with probability `randomness`, skip rank #1 and uniformly choose from ranks `2..top_n`; otherwise choose rank #1.
+- Frontend:
+  - `GameSetup` now loads/uses backend difficulty presets, includes Advanced panel (`max visits`, `top candidates`, `randomness`) and think-time disclaimer.
+  - `BoardView` forwards the current game difficulty in `Try again`.
+  - `App` fetches both `/api/presets` and `/api/difficulty-presets`.
+- Tests added/updated:
+  - Backend unit: `tests/unit/test_difficulty.py` and expanded `tests/unit/test_game_service.py`.
+  - Backend integration: `tests/integration/test_api_lifecycle.py` for create-game difficulty + difficulty presets endpoint.
+  - Frontend: `App.test.tsx`, `GameSetup.test.tsx`, `BoardView.test.tsx` for payload and try-again propagation.
+- Validation passed: targeted backend tests, targeted frontend Vitest suite, `mypy .`, and `pytest -m lint`.
+- Follow-up: candidate truncation now happens after full candidate evaluation/ranking (min black probability first, then survival score tie-break), so `top_n` limits only the final ranked shortlist used for selection/response.
+
+## Turn indicator and last-move marker (2026-05-17)
+
+- Backend `GameState.last_move` tracks the most recent played coordinate; exposed on `GET /api/games/{id}` and move responses.
+- Frontend `BoardView`: status line (`Black to play` / `White to play` / `Game over`) plus Shudan `markerMap` point on `last_move`.
+- Helpers in `frontend/src/lib/coordinates.ts`: `markerMapFromLastMove`, `formatToPlayLabel`, `formatTurnStatusLabel` (human “to play” vs engine “is thinking…” using `human_side` and `isTurnInProgress`).
+- `TODO.md` section 4.1 turn/marker item complete; turn-status copy item complete (2026-05-17).
+
+## Frontend layout overhaul for gameplay focus (2026-05-17)
+
+- `App` now has two distinct foreground modes:
+  - setup mode (`gameId === null`) shows title + `GameSetup` card only.
+  - playing mode hides setup controls entirely and shows only the board stage.
+- `BoardView` now renders a split `play-surface`:
+  - `Board area` for turn indicator + goban (largest region).
+  - right `Analysis panel` for Analyze/New Game controls and engine reasoning.
+- `EngineReasoning` candidate table now includes a numbered rank column (`#`) so right-panel candidate moves are visibly ordered.
+- CSS in `frontend/src/index.css` updated for board-dominant layout, setup-card foreground styling, and responsive collapse to one column on narrow viewports.
+- `TODO.md` section 4.1 layout item marked complete.
+- Validation passed:
+  - `npm --prefix frontend test -- src/App.test.tsx src/components/BoardView.test.tsx --run`
+  - `.venv/bin/python -m pytest tests/unit/test_frontend_components.py -m unit`
+  - `.venv/bin/python -m mypy .`
+  - `.venv/bin/python -m pytest -m lint`
+  - `ReadLints` clean for touched frontend files.
+- Follow-up UI fix after visual review:
+  - removed forced width stretching on `.board-area .shudan-goban` that caused rectangular board texture with empty wood area.
+  - increased `GobanBoard` default `vertexSize` from `24` to `30` so the square board stays visually dominant.
+  - added `GobanBoard` unit test asserting default `vertexSize=30`.
+  - validation: `npm --prefix frontend test -- src/components/GobanBoard.test.tsx src/components/BoardView.test.tsx src/App.test.tsx --run`, `ReadLints` clean.
+
+## Shared KataGo client serialization (2026-05-17)
+
+- `KataGoClient` now holds `threading.Lock` and wraps `_send_query` so concurrent analyze/candidate calls cannot interleave on stdin/stdout.
+- Unit tests in `tests/unit/test_katago_client.py`:
+  - `test_concurrent_send_query_serializes_stdin_access` — 4-thread pool; peak concurrent writes ≤ 1.
+  - `test_concurrent_send_query_matches_response_by_query_id` — stray stdout lines for other ids are skipped per caller.
+- `TODO.md` section 4.2 first two items complete; next: refactor `InMemoryGameService` to one shared analyzer.
+
+## InMemoryGameService shared analyzer lifecycle (2026-05-17)
+
+- `backend/app/game_service.py` now keeps a single optional `_katago_client` for the whole service (no per-game `_katago_clients` map).
+- Shared client init is lazy via `_ensure_katago_client()` and occurs on game creation when `katago_client_factory` is configured.
+- `delete_game()` now removes only in-memory game state; it does not stop KataGo.
+- `shutdown()` stops the shared client once (if present) and clears game state.
+- KataGo calls in analyze/engine paths now use the shared `_katago_for_game()` accessor.
+- Unit tests updated in `tests/unit/test_game_katago_lifecycle.py`:
+  - two games share one factory-created client,
+  - delete does not call `stop()`,
+  - shutdown calls `stop()` exactly once.
+- Validation run:
+  - `./.venv/bin/python -m pytest tests/unit/test_game_katago_lifecycle.py -q`
+  - `./.venv/bin/python -m pytest tests/unit/test_game_service.py -q`
+  - `./.venv/bin/python -m pytest tests/unit/test_app_lifecycle.py -q`
+  - `./.venv/bin/python -m mypy .`
+  - `./.venv/bin/python -m pytest -m lint -q`
+- Full `./.venv/bin/python -m pytest -m "unit or integration" -q` currently fails outside this task scope:
+  - live KataGo integration tests (`tests/integration/test_katago_game_api.py`, `tests/integration/test_katago_smoke.py`) in this environment,
+  - frontend build contract errors in `src/components/BoardView.test.tsx` (`last_move` fixture typing).
+
+## Shared KataGo multi-game integration tests (2026-05-17)
+
+- `tests/integration/test_shared_katago_games.py`:
+  - `test_two_games_analyze_without_crosstalk` — two presets (`white-flavoured`, `black-flavoured`); analyze returns correct `game_id`; board stone counts unchanged.
+  - `test_two_games_engine_move_without_crosstalk` — sequential engine moves; each game gains exactly one stone; presets stay distinct.
+  - `test_concurrent_analyze_and_engine_move_two_games` — `ThreadPoolExecutor(4)` runs analyze + engine-move on both games; responses bound to correct `game_id`; final boards consistent.
+- Live KataGo subprocess tests require non-sandbox execution (subprocess blocked in default sandbox).
+- Validation: `pytest tests/integration/test_shared_katago_games.py -m integration`, `flake8`, `mypy .`, `pytest -m lint`.
+
+## KataGo Docker analysis config (2026-05-17)
+
+- `third_party/katago/analysis.docker.cfg`: container-oriented override (`numAnalysisThreads=1`, `numSearchThreadsPerAnalysisThread=4`, smaller `nnCacheSizePowerOfTwo` / `nnMaxBatchSize`); header documents `KATAGO_ANALYSIS_TIMEOUT_SECONDS` for queued load.
+- `docs/development/katago-docker.md`: thread/timeout sizing, queue behavior, logDir, verify commands; linked from `katago-wsl-linux.md` and `.env.example`.
+- `tests/unit/test_katago_analysis_configs.py`: asserts local + docker cfg files and key settings.
+- Validation: `pytest tests/unit/test_katago_analysis_configs.py -m unit`, `mypy .`, `pytest -m lint`.
+
+## Shared KataGo engine documentation (2026-05-17)
+
+- `docs/development/shared-katago-engine.md`: canonical doc for one subprocess, request queueing + `KATAGO_ANALYSIS_TIMEOUT_SECONDS`, one model in RAM (`delete_game` vs `shutdown`), idle games after tab close vs New game `DELETE`.
+- Linked from `local-run.md`, `katago-wsl-linux.md`, `katago-docker.md`, `README.md`.
+- `tests/unit/test_shared_katago_docs.py`: unit gate on doc presence and cross-links.
+- `TODO.md` section 4.2 complete.
+- Validation: `pytest tests/unit/test_shared_katago_docs.py -m unit`, `mypy .`, `pytest -m lint`.
+
+## Docker Compose local packaging (2026-05-17)
+
+- `docker-compose.yml`: `backend` (FastAPI + KataGo via `docker/backend/Dockerfile`, healthcheck) + `frontend` (nginx on host `8080`, proxies `/api` and `/health`).
+- `docker/backend/Dockerfile`: runs `scripts/setup_katago.sh` at build into `/opt/katago`; uses `analysis.docker.cfg`; `KATAGO_ANALYSIS_TIMEOUT_SECONDS=45`.
+- `docker/frontend/Dockerfile` + `nginx.conf`: Vite production build, SPA fallback, API proxy to `backend:8000`.
+- `.dockerignore`, `.env.docker.example`, `docs/development/docker-compose.md`; linked from `local-run.md`, `README.md`, `katago-docker.md`.
+- `tests/unit/test_docker_packaging.py`: compose/Dockerfile/nginx/doc contract tests.
+- `TODO.md` section 5 first item complete.
+- Validation: `pytest tests/unit/test_docker_packaging.py tests/unit/test_local_run_docs.py -m unit`, `mypy .`, `pytest -m lint`.
+
+## Environment templates and production-safe defaults (2026-05-17)
+
+- `docs/development/environment.md`: canonical env var reference (required/optional, local vs Docker profiles, timeout/queue guidance, production-safe practices, Compose overrides).
+- `.env.example` / `.env.docker.example`: all six backend vars with documented defaults (`30` vs `45` timeout).
+- Linked from `local-run.md`, `docker-compose.md`, `katago-docker.md`, `README.md`.
+- `tests/unit/test_env_docs.py`: contract tests for doc + templates + cross-links; `test_docker_packaging` requires `environment.md` in docker-compose doc.
+- `TODO.md` section 5 second item complete.
+- Validation: `pytest tests/unit/test_env_docs.py tests/unit/test_docker_packaging.py -m unit`, `mypy .`, `pytest -m lint`.
+
+## Release checklist (2026-05-17)
+
+- `docs/development/release-checklist.md`: pre-tag/pre-deploy gate — `run_tests.sh full` / `release`, step-by-step lint/types/unit/integration/e2e, manual smoke, optional Docker, troubleshooting.
+- `scripts/run_tests.sh`: `release` alias (same as `full`); `Makefile` `test-release`.
+- Linked from `README.md`, `local-run.md`, `tests/README.md`.
+- `tests/unit/test_release_checklist.py`: doc contract + README/local-run links + `release` command in runner.
+- `TODO.md` section 5 complete (local run & packaging).
+- Validation: `pytest tests/unit/test_release_checklist.py tests/unit/test_test_runner.py -m unit`, `pytest -m lint`.
+
+## Cloud deployment topology (AWS ECS MVP) (2026-05-17)
+
+- Added `docs/development/cloud-aws-ecs-topology.md` defining section 6 MVP topology:
+  - AWS + ECS backend with a single service/task and shared in-process KataGo.
+  - Frontend hosting recommendation: `S3 + CloudFront`.
+  - Namecheap domain integration options (keep DNS vs Route 53 delegation).
+  - Secrets strategy: AWS Secrets Manager for sensitive values.
+  - Manual deploy flow and post-deploy smoke checks (`GET /health`, `/api/presets`, quick gameplay path).
+- Linked topology doc from `README.md` References section.
+- Added `tests/unit/test_cloud_topology_docs.py` to gate doc presence/content and README link.
+- `TODO.md` section 6 first item marked complete.
+
+## Cloud backend container image (2026-05-17)
+
+- `docs/development/cloud-backend-container.md`: deployable backend image (`docker/backend/Dockerfile`), fixed in-image `KATAGO_*` paths, `build_backend_image.sh`, ECR push flow, ECS env snippet, HEALTHCHECK.
+- `scripts/build_backend_image.sh`: `docker build -f docker/backend/Dockerfile`; optional `ECR_REGISTRY` auto-tag.
+- `docker/backend/Dockerfile`: added `HEALTHCHECK` on `GET /health` for ECS/standalone runs.
+- Linked from `cloud-aws-ecs-topology.md`, `environment.md` (Cloud deploy profile), `README.md`.
+- `tests/unit/test_cloud_backend_container.py`: doc/script/Dockerfile/topology/README/env contract tests.
+- `TODO.md` section 6 second item complete; next: production frontend build/publish path.
+- Validation: `pytest tests/unit/test_cloud_backend_container.py tests/unit/test_cloud_topology_docs.py tests/unit/test_docker_packaging.py -m unit`, `mypy .`, `pytest -m lint`.
+
+## Cloud frontend static build and publish (2026-05-17)
+
+- `frontend/src/lib/api.ts`: `apiUrl()` prefixes paths with `VITE_API_BASE_URL` when set (cloud split-domain); same-origin relative paths when unset (dev proxy, Docker nginx).
+- `frontend/.env.production.example`, `scripts/build_frontend.sh`, `scripts/publish_frontend_s3.sh` (S3 sync + optional CloudFront invalidation).
+- `docs/development/cloud-frontend-static.md`: build/publish flow, CORS, smoke checks; linked from topology, backend container doc, `environment.md`, `README.md`.
+- `backend/app/config.py`: `CORS_ALLOW_ORIGINS` (comma-separated, `NoDecode`); defaults include Vite `5173` and Compose nginx `8080`.
+- All frontend `fetch` calls use `apiUrl()`.
+- `tests/unit/test_cloud_frontend_static.py`, `frontend/src/lib/api.test.ts`, extended `test_config.py`.
+- `TODO.md` section 6 third item complete; next: document cloud env vars, resource sizing, and KataGo timeouts.
+- Validation: `pytest tests/unit/test_cloud_frontend_static.py tests/unit/test_config.py -m unit`, `npm --prefix frontend test -- src/lib/api.test.ts`, `mypy .`, `pytest -m lint`.
+
+## Cloud env, sizing, and KataGo timeouts (2026-05-17)
+
+- `docs/development/cloud-env-and-sizing.md`: canonical ECS/Fargate env table (all `KATAGO_*`, `CORS_ALLOW_ORIGINS`, `VITE_API_BASE_URL` at build), CPU/RAM starting points, timeout-by-load table, tuning order, ALB vs app timeouts, example ECS JSON.
+- Linked from topology (sizing section shortened), `cloud-backend-container.md`, `environment.md` cloud profile, `README.md`.
+- `TODO.md` section 6 fourth item complete; next: deploy automation with post-deploy smoke checks.
+
+## Cloud deploy automation and smoke (2026-05-17)
+
+- `backend/app/deploy/smoke.py`: `run_deploy_smoke_checks` — `GET /health`, `GET /api/presets`, optional `POST /api/games` + `POST .../analyze`.
+- `scripts/smoke_deploy.py`: CLI (`API_BASE_URL`, `--with-analyze`, `--timeout` / `SMOKE_TIMEOUT_SECONDS`).
+- `scripts/deploy_cloud.sh`: orchestrates backend build (+ optional ECR push), frontend build/publish (`S3_BUCKET`), smoke; skip via `SKIP_BACKEND` / `SKIP_FRONTEND` / `SKIP_SMOKE`; `SMOKE_WITH_ANALYZE=1`.
+- `docs/development/cloud-deploy-automation.md`: usage, env table, two-step ECS rollout pattern.
+- Linked from topology, cloud-env-and-sizing, `README.md`.
+- `tests/unit/test_deploy_smoke.py`: smoke helpers, CLI, script/doc contracts.
+- `TODO.md` section 6 fifth item complete; next: AWS setup runbook (zero to custom domain).
+- Validation: `pytest tests/unit/test_deploy_smoke.py -m unit`, `mypy .`, `pytest -m lint`.
+- Validation: doc review only (no doc tests per `.cursor/rules/development.mdc`).
+
+## Policy: no documentation tests (2026-05-17)
+
+- `.cursor/rules/development.mdc` and `testing.mdc` forbid new pytest that grep markdown/README/docs. Legacy `test_*_docs.py` files remain until explicitly removed; do not extend them.
+
+## Phase close: UX, shared KataGo, packaging, cloud MVP (2026-05-17)
+
+**Delivered (sections 4.1–6 partial in `TODO.md`):**
+
+- **UX (4.1):** click-to-move + auto engine reply; per-preset side choice; AI resignation thresholds; difficulty presets (Easy–Impossible); turn/status banner; board-first layout with setup overlay; `last_move` marker on board.
+- **Shared KataGo (4.2):** singleton client with serialized `_send_query`; `InMemoryGameService` uses one analyzer; `delete_game` drops state only; `shutdown()` stops engine on app exit; `test_shared_katago_games.py`; `shared-katago-engine.md`, `analysis.docker.cfg`.
+- **Local run & packaging (5):** `local-run.md`, Docker Compose (`docker-compose.yml`, `docker/`), `environment.md`, `release-checklist.md`, `run_tests.sh` `release` alias.
+- **Cloud MVP (6, 5/6 items):** ECS topology, backend image (`docker/backend/Dockerfile`, `build_backend_image.sh`), frontend static publish (`apiUrl()`, `build_frontend.sh`, `publish_frontend_s3.sh`, `CORS_ALLOW_ORIGINS`), env/sizing doc, deploy automation (`deploy_cloud.sh`, `smoke_deploy.py`, `backend/app/deploy/smoke.py`).
+
+**Outstanding:** section 6 AWS zero-to-domain runbook; sections 7–9 (integration fixtures, logging/errors, polish docs).
+
+**Close-phase validation:** `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` — 291 passed. No `@pytest.mark.e2e` tests in tree yet.
+
+**Close-phase fixes:** `cloud-aws-ecs-topology.md` smoke section mentions `GET /health`; `BoardView.test.tsx` `activeGame()` helper defaults `last_move` without TS2783 duplicate-key error.

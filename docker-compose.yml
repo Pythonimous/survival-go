@@ -1,0 +1,30 @@
+# Optional local packaging: backend + KataGo + nginx frontend (no cloud required).
+# See docs/development/docker-compose.md
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    environment:
+      KATAGO_BINARY_PATH: /opt/katago/katago
+      KATAGO_CONFIG_PATH: /app/third_party/katago/analysis.docker.cfg
+      KATAGO_MODEL_PATH: /opt/katago/kata1-b20c256x2-s4384473088-d968438914.bin.gz
+      KATAGO_ANALYSIS_TIMEOUT_SECONDS: "45"
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy

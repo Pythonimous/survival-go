@@ -14,14 +14,27 @@ class CandidateMove:
 
     move: str
     survival_score: int
+    min_black_probability: float
+
+
+def _candidate_sort_key(candidate: CandidateMove, *, engine_side: EngineSide) -> tuple[float, int]:
+    if engine_side == "B":
+        return (-candidate.min_black_probability, candidate.survival_score)
+    return (candidate.min_black_probability, -candidate.survival_score)
 
 
 def rank_candidates_for_side(
     candidates: list[CandidateMove], *, engine_side: EngineSide
 ) -> list[CandidateMove]:
-    """Return candidates sorted by objective direction for the side to move."""
-    reverse = engine_side == "W"
-    return sorted(candidates, key=lambda candidate: candidate.survival_score, reverse=reverse)
+    """Return candidates sorted best-first for the side to move.
+
+    Primary key is min_black_probability (maximize for Black, minimize for White).
+    Ties break on survival score (minimize for Black, maximize for White).
+    """
+    return sorted(
+        candidates,
+        key=lambda candidate: _candidate_sort_key(candidate, engine_side=engine_side),
+    )
 
 
 def choose_engine_move(

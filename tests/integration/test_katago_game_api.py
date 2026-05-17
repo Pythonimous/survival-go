@@ -115,7 +115,7 @@ def test_live_analyze_surfaces_katago_process_exit(katago_settings: Settings) ->
     client = KataGoClient(settings=katago_settings)
     service = InMemoryGameService(
         survival_threshold=katago_settings.survival_threshold,
-        katago_client=client,
+        katago_client_factory=lambda: client,
         katago_top_n=katago_settings.katago_top_n,
     )
     human_side = get_preset_by_id("balanced").initial_player_to_move
@@ -145,7 +145,7 @@ def test_live_engine_move_surfaces_katago_process_exit(katago_settings: Settings
     client = KataGoClient(settings=katago_settings)
     service = InMemoryGameService(
         survival_threshold=katago_settings.survival_threshold,
-        katago_client=client,
+        katago_client_factory=lambda: client,
         katago_top_n=katago_settings.katago_top_n,
     )
     human_side = get_preset_by_id("balanced").initial_player_to_move
@@ -175,6 +175,6 @@ def test_live_engine_move_surfaces_katago_process_exit(katago_settings: Settings
 
     with pytest.raises(
         GameServiceError,
-        match="failed to fetch engine move candidates from KataGo",
+        match="failed to analyze game with KataGo",
     ):
         service.apply_engine_move(game_id=game.game_id)

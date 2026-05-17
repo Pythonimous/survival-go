@@ -1,6 +1,6 @@
 # Project Specification
 
-- Project: survival-katago
+- Project: survival-go
 
 ## Overview
 

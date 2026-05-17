@@ -14,6 +14,15 @@ def test_katago_ownership_to_p_black_maps_signed_values_to_probability() -> None
 
 
 @pytest.mark.unit
+def test_katago_ownership_to_p_black_preserves_soft_extremes() -> None:
+    p_black = katago_ownership_to_p_black([-0.976, 0.0, 0.981])
+
+    assert p_black[0] == pytest.approx(0.012)
+    assert p_black[1] == pytest.approx(0.5)
+    assert p_black[2] == pytest.approx(0.9905)
+
+
+@pytest.mark.unit
 def test_parse_ownership_from_response_reads_root_ownership() -> None:
     ownership = [0.0] * 361
     ownership[0] = -1.0

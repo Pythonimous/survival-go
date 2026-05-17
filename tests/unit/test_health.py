@@ -31,7 +31,7 @@ def test_health_returns_service_status() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "survival-katago"}
+    assert response.json() == {"status": "ok", "service": "survival-go"}
 
 
 @pytest.mark.unit
@@ -64,7 +64,7 @@ def test_backend_uvicorn_responds_to_health() -> None:
                     assert resp.status == 200
                     body = resp.read().decode("utf-8")
                     assert '"status":"ok"' in body.replace(" ", "")
-                    assert "survival-katago" in body
+                    assert "survival-go" in body
                     return
             except (urllib.error.URLError, TimeoutError):
                 time.sleep(0.25)

@@ -1,7 +1,16 @@
 #!/bin/bash
 # Quick Test Runner
 
-set -e
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
+  PYTHON="${PYTHON:-${VIRTUAL_ENV}/bin/python}"
+elif [ -x "$ROOT/.venv/bin/python" ]; then
+  PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
+else
+  PYTHON="${PYTHON:-python3}"
+fi
 
 SOURCE_DIR="${SOURCE_DIR:-backend}"
 
@@ -22,6 +31,7 @@ Commands:
   coverage      Run tests with coverage report
   all           Run all checks (lint, types, unit, integration)
   full          Run everything including E2E (requires server)
+  release       Same as full (pre-tag / pre-deploy regression gate)
   
 EOF
 }
@@ -29,15 +39,15 @@ EOF
 case "${1:-}" in
     unit)
         echo "Running unit tests..."
-        pytest -m unit
+        "$PYTHON" -m pytest -m unit
         ;;
     integration)
         echo "Running integration tests..."
-        pytest -m integration
+        "$PYTHON" -m pytest -m integration
         ;;
     fast)
         echo "Running unit + integration tests..."
-        pytest -m "unit or integration"
+        "$PYTHON" -m pytest -m "unit or integration"
         ;;
     e2e)
         echo "Running E2E tests..."
@@ -45,15 +55,15 @@ case "${1:-}" in
         ;;
     lint)
         echo "Running lint checks..."
-        pytest -m lint
+        "$PYTHON" -m pytest -m lint
         ;;
     types)
         echo "Running type checks..."
-        mypy .
+        "$PYTHON" -m mypy .
         ;;
     coverage)
         echo "Running tests with coverage..."
-        pytest -m "unit or integration" --cov="${SOURCE_DIR}" --cov-report=term-missing --cov-report=html
+        "$PYTHON" -m pytest -m "unit or integration" --cov="${SOURCE_DIR}" --cov-report=term-missing --cov-report=html
         echo ""
         echo "Coverage report generated in htmlcov/index.html"
         ;;
@@ -61,33 +71,33 @@ case "${1:-}" in
         echo "Running full validation suite (except E2E)..."
         echo ""
         echo "1/4 Running lint checks..."
-        pytest -m lint
+        "$PYTHON" -m pytest -m lint
         echo ""
         echo "2/4 Running type checks..."
-        mypy .
+        "$PYTHON" -m mypy .
         echo ""
         echo "3/4 Running unit tests..."
-        pytest -m unit
+        "$PYTHON" -m pytest -m unit
         echo ""
         echo "4/4 Running integration tests..."
-        pytest -m integration
+        "$PYTHON" -m pytest -m integration
         echo ""
         echo "All checks passed!"
         ;;
-    full)
+    release|full)
         echo "Running FULL validation suite including E2E..."
         echo ""
         echo "1/5 Running lint checks..."
-        pytest -m lint
+        "$PYTHON" -m pytest -m lint
         echo ""
         echo "2/5 Running type checks..."
-        mypy .
+        "$PYTHON" -m mypy .
         echo ""
         echo "3/5 Running unit tests..."
-        pytest -m unit
+        "$PYTHON" -m pytest -m unit
         echo ""
         echo "4/5 Running integration tests..."
-        pytest -m integration
+        "$PYTHON" -m pytest -m integration
         echo ""
         echo "5/5 Running E2E tests..."
         ./scripts/run_e2e_tests.sh

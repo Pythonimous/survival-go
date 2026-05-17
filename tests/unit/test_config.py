@@ -50,6 +50,25 @@ def test_settings_loads_required_paths_and_defaults(
     assert settings.survival_threshold == pytest.approx(0.95)
     assert settings.katago_top_n == 8
     assert settings.katago_analysis_timeout_seconds == pytest.approx(30.0)
+    assert "http://localhost:5173" in settings.cors_allow_origins
+
+
+@pytest.mark.unit
+def test_settings_parses_cors_allow_origins_from_comma_separated_env(
+    monkeypatch: pytest.MonkeyPatch, katago_paths: dict[str, str]
+) -> None:
+    _set_katago_env(monkeypatch, katago_paths)
+    monkeypatch.setenv(
+        "CORS_ALLOW_ORIGINS",
+        "https://app.example.com, https://app.example.org",
+    )
+
+    settings = Settings()
+
+    assert settings.cors_allow_origins == [
+        "https://app.example.com",
+        "https://app.example.org",
+    ]
 
 
 @pytest.mark.unit

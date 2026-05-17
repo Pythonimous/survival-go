@@ -6,7 +6,7 @@ alwaysApply: true
 ---
 - Frame the smallest useful change before touching code.
 - Confirm the task against `TODO.md` and revise the list if priorities shift.
-- Treat test-first as mandatory: write or update tests before touching any production code.
+- Treat test-first as mandatory for **executable** code: write or update tests before touching production code, scripts, or configs that affect runtime behavior.
 - Do not edit implementation files until the relevant tests are in place and fail for the expected reason.
 - Call out scope creep or overengineering as soon as it appears and wait for approval before expanding the task.
 - Write or update the tests that prove the change.
@@ -24,3 +24,6 @@ alwaysApply: true
 - When the work is stable, execute `.cursor/commands/close-phase.md`.
 - Repeat the loop until the feature is ready to hand off.
 - Hand off the feature. STOP. NO coercion, no "if you want, I can also" - let the user decide the next step.
+- **NEVER write tests for documentation.** No exceptions. Do not add pytest files (or extend existing ones) that assert on markdown, README, `docs/**`, link text, "required strings in .md", or cross-link presence. Doc-only tasks are complete when the prose is accurate and linked — not when a `test_*_docs.py` passes. This wastes CI time and tokens; it is forbidden, not discouraged.
+- Legacy doc-grep tests may still exist in the repo — **do not add new ones** and **do not extend** them when editing docs. Remove them only when the user explicitly asks to clean them up.
+- For documentation-only changes: skip the test-first loop; run `mypy` / `pytest -m lint` / targeted pytest only if you also changed executable code.

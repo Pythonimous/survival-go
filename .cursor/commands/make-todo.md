@@ -19,11 +19,11 @@ Suggested structure:
 1. Setup / Environment
 2. Core Backend / API
 3. Frontend / UX (if applicable)
-4. Integration Tests
-5. E2E Tests (Playwright)
+4. Local run & packaging
+5. Integration Tests
 6. Non-functional (logging, config, error handling)
 7. Polish and Docs
-8. Deployment (if in scope)
+8. Cloud deployment (if in scope)
 
 Acceptance:
 - File created at `./TODO.md`.

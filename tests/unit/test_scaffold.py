@@ -17,7 +17,7 @@ def test_backend_app_is_fastapi_instance() -> None:
     from backend.app.main import app
 
     assert isinstance(app, FastAPI)
-    assert app.title == "survival-katago"
+    assert app.title == "survival-go"
 
 
 @pytest.mark.unit
@@ -26,6 +26,14 @@ def test_run_scripts_exist_and_are_executable() -> None:
         script = PROJECT_ROOT / "scripts" / name
         assert script.is_file(), f"missing {script}"
         assert os.access(script, os.X_OK), f"{script} is not executable"
+
+
+@pytest.mark.unit
+def test_run_tests_script_uses_python_module_invocation() -> None:
+    """Avoid broken venv console-script shebangs after copying .venv between projects."""
+    text = (PROJECT_ROOT / "scripts" / "run_tests.sh").read_text(encoding="utf-8")
+    assert '"$PYTHON" -m pytest' in text
+    assert '"$PYTHON" -m mypy' in text
 
 
 @pytest.mark.unit

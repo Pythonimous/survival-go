@@ -23,6 +23,7 @@ MAKE_TARGETS = (
     "test-types",
     "test-fast",
     "test-all",
+    "test-release",
 )
 
 

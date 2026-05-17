@@ -1,4 +1,4 @@
-.PHONY: help test-unit test-integration test-e2e test-lint test-types test-fast test-all test-full test-coverage
+.PHONY: help test-unit test-integration test-e2e test-lint test-types test-fast test-all test-full test-release test-coverage
 
 help:
 	@./scripts/run_tests.sh help
@@ -26,6 +26,9 @@ test-all:
 
 test-full:
 	@./scripts/run_tests.sh full
+
+test-release:
+	@./scripts/run_tests.sh release
 
 test-coverage:
 	@./scripts/run_tests.sh coverage

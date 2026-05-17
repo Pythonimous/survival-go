@@ -1,8 +1,12 @@
 """Unit tests for KataGo subprocess bootstrap client."""
 
 import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
 from pathlib import Path
+from queue import Queue
 from subprocess import PIPE
 from unittest.mock import Mock
 
@@ -253,3 +257,149 @@ def test_read_final_response_raises_when_analysis_deadline_expires(
 
     with pytest.raises(TimeoutError, match="timed out waiting for KataGo analysis"):
         client._read_final_response(process, query_id="deadline-test")
+
+
+def _install_concurrent_process_mock(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    responses_by_id: dict[str, list[dict[str, object]]],
+) -> dict[str, object]:
+    """Mock KataGo process with blocking stdout and per-query response lines."""
+    trackers: dict[str, object] = {"peak_active_writes": 0, "write_order": []}
+    active_writes = 0
+    active_lock = threading.Lock()
+    write_order: list[str] = []
+    pending_lines: Queue[str] = Queue()
+
+    process = Mock()
+    process.poll.return_value = None
+
+    def write(data: str) -> int:
+        nonlocal active_writes
+        with active_lock:
+            active_writes += 1
+            trackers["peak_active_writes"] = max(
+                int(trackers["peak_active_writes"]), active_writes
+            )
+        try:
+            time.sleep(0.02)
+            query_id = str(json.loads(data.strip())["id"])
+            write_order.append(query_id)
+            for payload in responses_by_id[query_id]:
+                pending_lines.put(json.dumps(payload))
+            return len(data)
+        finally:
+            with active_lock:
+                active_writes -= 1
+
+    def readline() -> str:
+        time.sleep(0.01)
+        if pending_lines.empty():
+            return ""
+        return pending_lines.get_nowait() + "\n"
+
+    process.stdin = Mock()
+    process.stdin.write.side_effect = write
+    process.stdout = Mock()
+    process.stdout.readline.side_effect = readline
+    monkeypatch.setattr("backend.app.katago.client.subprocess.Popen", Mock(return_value=process))
+    trackers["write_order"] = write_order
+    return trackers
+
+
+@pytest.mark.unit
+def test_concurrent_send_query_serializes_stdin_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _build_settings(tmp_path)
+
+    def ownership_response(query_id: str, p_black_first: float) -> list[dict[str, object]]:
+        katago_first = (p_black_first * 2.0) - 1.0
+        ownership = [katago_first] + [0.0] * 360
+        return [
+            {"id": "other-query", "isDuringSearch": False, "ownership": [0.0] * 361},
+            {"id": query_id, "isDuringSearch": True, "ownership": ownership},
+            {"id": query_id, "isDuringSearch": False, "ownership": ownership},
+        ]
+
+    trackers = _install_concurrent_process_mock(
+        monkeypatch,
+        responses_by_id={
+            "query-a": ownership_response("query-a", 0.1),
+            "query-b": ownership_response("query-b", 0.9),
+        },
+    )
+    client = KataGoClient(settings=settings)
+
+    def analyze(query_id: str, p_black_first: float) -> float:
+        result = client.analyze_position(
+            query_id=query_id,
+            initial_stones=[],
+            moves=[],
+            initial_player="B",
+            max_visits=5,
+        )
+        return result[0]
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [
+            pool.submit(analyze, "query-a", 0.1),
+            pool.submit(analyze, "query-b", 0.9),
+            pool.submit(analyze, "query-a", 0.1),
+            pool.submit(analyze, "query-b", 0.9),
+        ]
+        results = [future.result() for future in as_completed(futures)]
+
+    assert sorted(results) == pytest.approx([0.1, 0.1, 0.9, 0.9])
+    write_order = trackers["write_order"]
+    assert write_order == ["query-a", "query-b", "query-a", "query-b"] or write_order == [
+        "query-b",
+        "query-a",
+        "query-b",
+        "query-a",
+    ]
+    assert trackers["peak_active_writes"] <= 1
+
+
+@pytest.mark.unit
+def test_concurrent_send_query_matches_response_by_query_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _build_settings(tmp_path)
+    _install_concurrent_process_mock(
+        monkeypatch,
+        responses_by_id={
+            "alpha": [
+                {"id": "beta", "isDuringSearch": False, "ownership": [0.0] * 361},
+                {"id": "alpha", "isDuringSearch": False, "ownership": [1.0] + [0.0] * 360},
+            ],
+            "beta": [
+                {"id": "alpha", "isDuringSearch": False, "ownership": [1.0] + [0.0] * 360},
+                {"id": "beta", "isDuringSearch": False, "ownership": [-1.0] + [0.0] * 360},
+            ],
+        },
+    )
+    client = KataGoClient(settings=settings)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        alpha_future = pool.submit(
+            client.analyze_position,
+            query_id="alpha",
+            initial_stones=[],
+            moves=[],
+            initial_player="B",
+            max_visits=3,
+        )
+        beta_future = pool.submit(
+            client.analyze_position,
+            query_id="beta",
+            initial_stones=[],
+            moves=[],
+            initial_player="B",
+            max_visits=3,
+        )
+        alpha = alpha_future.result()
+        beta = beta_future.result()
+
+    assert alpha[0] == 1.0
+    assert beta[0] == 0.0

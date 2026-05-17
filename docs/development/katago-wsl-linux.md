@@ -88,6 +88,10 @@ Shipped at `third_party/katago/analysis.cfg`. Tuned for **CPU / single-query** d
 
 For heavier analysis later, see [KataGo’s analysis example config](https://github.com/lightvector/KataGo/blob/master/cpp/configs/analysis_example.cfg) and increase threads gradually.
 
+The backend always runs **one** shared analysis subprocess for all games; see [shared-katago-engine.md](shared-katago-engine.md) for queueing, RAM, and session lifecycle.
+
+For Docker or a small shared host (light concurrent load), use `third_party/katago/analysis.docker.cfg` and see [katago-docker.md](katago-docker.md).
+
 ### Neural network (`.bin.gz`)
 
 Must be a **kata1** network in `.bin.gz` format from [katagotraining.org/networks](https://katagotraining.org/networks/). The default model is smaller than current “best” nets but fast enough for smoke tests and local iteration.

@@ -1,8 +1,11 @@
-from fastapi import FastAPI, HTTPException, status
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.app.config import get_settings
+from backend.app.difficulty import DifficultyConfig, DifficultyPreset, list_difficulty_presets
 from backend.app.engine.board import StoneColor
 from backend.app.game_service import (
     GameNotFoundError,
@@ -15,12 +18,13 @@ from backend.app.katago.client import KataGoClient
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    service: str = "survival-katago"
+    service: str = "survival-go"
 
 
 class CreateGameRequest(BaseModel):
     preset_id: str
     human_side: StoneColor
+    difficulty: DifficultyConfig | None = None
 
 
 class CreateGameResponse(BaseModel):
@@ -38,11 +42,29 @@ class GameStateResponse(BaseModel):
     human_side: StoneColor
     engine_side: StoneColor
     next_to_move: StoneColor
+    moves_played: int
+    last_move: str | None = None
+    status: str = "active"
+    winner: StoneColor | None = None
+    difficulty: DifficultyConfig
     stones: list[dict[str, str]]
 
 
 class MoveResponse(GameStateResponse):
     move: str
+
+
+class CandidateSummary(BaseModel):
+    move: str
+    survival_score: int
+    min_black_probability: float
+
+
+class EngineMoveResponse(MoveResponse):
+    survival_score: int
+    metrics: dict[str, float | int]
+    candidates: list[CandidateSummary]
+    resigned: bool = False
 
 
 class AnalyzeResponse(BaseModel):
@@ -60,6 +82,11 @@ def _to_game_state_payload(game: GameState) -> GameStateResponse:
         human_side=game.human_side,
         engine_side=game.engine_side,
         next_to_move=game.next_to_move,
+        moves_played=game.moves_played,
+        last_move=game.last_move,
+        status=game.status,
+        winner=game.winner,
+        difficulty=game.difficulty,
         stones=game.stones(),
     )
 
@@ -89,6 +116,12 @@ def _register_list_presets_route(
             raise _bad_request(str(exc)) from exc
 
 
+def _register_list_difficulty_presets_route(application: FastAPI) -> None:
+    @application.get("/api/difficulty-presets", response_model=list[DifficultyPreset])
+    def list_difficulty_settings() -> list[DifficultyPreset]:
+        return list_difficulty_presets()
+
+
 def _register_create_game_route(
     application: FastAPI, game_service: InMemoryGameService
 ) -> None:
@@ -102,6 +135,7 @@ def _register_create_game_route(
             game = game_service.create_game(
                 preset_id=payload.preset_id,
                 human_side=payload.human_side,
+                difficulty=payload.difficulty,
             )
         except GameServiceError as exc:
             raise _bad_request(str(exc)) from exc
@@ -116,6 +150,18 @@ def _register_get_game_route(application: FastAPI, game_service: InMemoryGameSer
         except GameNotFoundError as exc:
             raise _not_found(str(exc)) from exc
         return _to_game_state_payload(game)
+
+
+def _register_delete_game_route(
+    application: FastAPI, game_service: InMemoryGameService
+) -> None:
+    @application.delete("/api/games/{game_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_game(game_id: str) -> Response:
+        try:
+            game_service.delete_game(game_id)
+        except GameNotFoundError as exc:
+            raise _not_found(str(exc)) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _register_human_move_route(
@@ -137,17 +183,34 @@ def _register_human_move_route(
 def _register_engine_move_route(
     application: FastAPI, game_service: InMemoryGameService
 ) -> None:
-    @application.post("/api/games/{game_id}/engine-move", response_model=MoveResponse)
-    def apply_engine_move(game_id: str) -> MoveResponse:
+    @application.post("/api/games/{game_id}/engine-move", response_model=EngineMoveResponse)
+    def apply_engine_move(game_id: str) -> EngineMoveResponse:
         try:
-            game, move = game_service.apply_engine_move(game_id=game_id)
+            outcome = game_service.apply_engine_move(game_id=game_id)
         except GameNotFoundError as exc:
             raise _not_found(str(exc)) from exc
         except GameServiceError as exc:
             raise _bad_request(str(exc)) from exc
 
-        state_payload = _to_game_state_payload(game)
-        return MoveResponse(**state_payload.model_dump(), move=move)
+        state_payload = _to_game_state_payload(outcome.game)
+        return EngineMoveResponse(
+            **state_payload.model_dump(),
+            move=outcome.move,
+            survival_score=outcome.survival_score,
+            metrics={
+                "unresolved_count": outcome.metrics.unresolved_count,
+                "min_black_probability": outcome.metrics.min_black_probability,
+            },
+            candidates=[
+                CandidateSummary(
+                    move=candidate.move,
+                    survival_score=candidate.survival_score,
+                    min_black_probability=candidate.min_black_probability,
+                )
+                for candidate in outcome.candidates
+            ],
+            resigned=outcome.resigned,
+        )
 
 
 def _register_analyze_route(application: FastAPI, game_service: InMemoryGameService) -> None:
@@ -173,29 +236,37 @@ def _register_analyze_route(application: FastAPI, game_service: InMemoryGameServ
 def _register_routes(application: FastAPI, game_service: InMemoryGameService) -> None:
     _register_health_route(application)
     _register_list_presets_route(application, game_service)
+    _register_list_difficulty_presets_route(application)
     _register_create_game_route(application, game_service)
     _register_get_game_route(application, game_service)
+    _register_delete_game_route(application, game_service)
     _register_human_move_route(application, game_service)
     _register_engine_move_route(application, game_service)
     _register_analyze_route(application, game_service)
 
 
-def create_app() -> FastAPI:
+def create_app(*, game_service: InMemoryGameService | None = None) -> FastAPI:
     settings = get_settings()
-    game_service = InMemoryGameService(
+    resolved_game_service = game_service or InMemoryGameService(
         survival_threshold=settings.survival_threshold,
-        katago_client=KataGoClient(settings=settings),
+        katago_client_factory=lambda: KataGoClient(settings=settings),
         katago_top_n=settings.katago_top_n,
     )
-    application = FastAPI(title="survival-katago")
+
+    @asynccontextmanager
+    async def lifespan(_application: FastAPI):
+        yield
+        resolved_game_service.shutdown()
+
+    application = FastAPI(title="survival-go", lifespan=lifespan)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=settings.cors_allow_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    _register_routes(application, game_service)
+    _register_routes(application, resolved_game_service)
     return application
 
 

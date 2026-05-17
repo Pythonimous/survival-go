@@ -2,9 +2,10 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -26,6 +27,18 @@ class Settings(BaseSettings):
     katago_analysis_timeout_seconds: float = Field(
         default=30.0,
         alias="KATAGO_ANALYSIS_TIMEOUT_SECONDS",
+    )
+    cors_allow_origins: Annotated[
+        list[str],
+        NoDecode,
+    ] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+        ],
+        alias="CORS_ALLOW_ORIGINS",
     )
 
     @field_validator(
@@ -74,6 +87,15 @@ class Settings(BaseSettings):
         if value <= 0.0:
             raise ValueError("KATAGO_ANALYSIS_TIMEOUT_SECONDS must be positive")
         return value
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def _parse_cors_allow_origins(cls, value: object) -> list[str]:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        if isinstance(value, list):
+            return [str(origin).strip() for origin in value if str(origin).strip()]
+        raise TypeError(f"expected comma-separated string or list, got {type(value).__name__}")
 
 
 def reset_settings_cache() -> None:

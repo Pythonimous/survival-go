@@ -6,6 +6,12 @@ alwaysApply: true
 ---
 # Testing Checklist
 
+## Do not test documentation
+
+**Forbidden:** pytest (or any test) whose assertions are primarily "this markdown/README/doc contains string X" or "file Y links to Z". Documentation is validated by human review, not by grep tests. Never create `test_*_docs.py` or similar for new work; do not extend legacy doc contract tests.
+
+## Quality gates
+
 - Run `flake8` early or rely on `pytest -m lint` for the gate.
 - Run `mypy .` and clear every reported issue.
 - Use `pytest` for the full suite when confidence is needed.

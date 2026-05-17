@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -67,6 +68,7 @@ class KataGoClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._process: subprocess.Popen[str] | None = None
+        self._query_lock = threading.Lock()
 
     def start(self) -> subprocess.Popen[str]:
         """Start KataGo analysis mode if not already running."""
@@ -163,14 +165,15 @@ class KataGoClient:
         return parse_candidate_moves_from_response(response)
 
     def _send_query(self, query: dict[str, Any]) -> dict[str, Any]:
-        process = self.start()
-        if process.stdin is None or process.stdout is None:
-            raise RuntimeError("KataGo process is missing stdin/stdout pipes")
+        with self._query_lock:
+            process = self.start()
+            if process.stdin is None or process.stdout is None:
+                raise RuntimeError("KataGo process is missing stdin/stdout pipes")
 
-        query_id = str(query["id"])
-        process.stdin.write(json.dumps(query) + "\n")
-        process.stdin.flush()
-        return self._read_final_response(process, query_id=query_id)
+            query_id = str(query["id"])
+            process.stdin.write(json.dumps(query) + "\n")
+            process.stdin.flush()
+            return self._read_final_response(process, query_id=query_id)
 
     def _read_final_response(
         self, process: subprocess.Popen[str], *, query_id: str

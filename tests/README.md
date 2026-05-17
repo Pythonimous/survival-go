@@ -25,6 +25,7 @@ Use `./scripts/run_tests.sh <command>` or equivalent `make` targets:
 | `fast` / `make test-fast` | unit + integration |
 | `all` / `make test-all` | lint, types, unit, integration |
 | `full` / `make test-full` | `all` + e2e |
+| `release` / `make test-release` | same as `full` (pre-tag regression gate) |
 
 CI runs the same commands in `.github/workflows/ci.yml` (parallel jobs per check).
 

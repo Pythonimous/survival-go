@@ -7,7 +7,7 @@ from typing import Any
 
 def katago_ownership_to_p_black(ownership: list[float]) -> list[float]:
     """Map KataGo ownership in [-1, 1] to black probability in [0, 1]."""
-    return [(value + 1.0) / 2.0 for value in ownership]
+    return [min(1.0, max(0.0, (value + 1.0) / 2.0)) for value in ownership]
 
 
 def parse_ownership_from_response(response: dict[str, Any], *, board_size: int) -> list[float]:

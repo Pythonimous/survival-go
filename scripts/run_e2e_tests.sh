@@ -19,10 +19,19 @@
 #   # Non-web project (disable server):
 #   E2E_SERVER_DISABLED=true ./scripts/run_e2e_tests.sh
 
-set -e
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
+  PYTHON="${PYTHON:-${VIRTUAL_ENV}/bin/python}"
+elif [ -x "$ROOT/.venv/bin/python" ]; then
+  PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
+else
+  PYTHON="${PYTHON:-python3}"
+fi
 
 E2E_SERVER_PORT="${E2E_SERVER_PORT:-8000}"
-E2E_SERVER_COMMAND="${E2E_SERVER_COMMAND:-uvicorn backend.app.main:app --host 0.0.0.0 --port ${E2E_SERVER_PORT}}"
+E2E_SERVER_COMMAND="${E2E_SERVER_COMMAND:-$PYTHON -m uvicorn backend.app.main:app --host 0.0.0.0 --port ${E2E_SERVER_PORT}}"
 E2E_SERVER_DISABLED="${E2E_SERVER_DISABLED:-false}"
 SERVER_PID=""
 SERVER_STARTED_BY_SCRIPT=false
@@ -82,7 +91,7 @@ echo ""
 
 # Pass all arguments to pytest and capture exit code
 set +e
-pytest -m e2e "$@"
+"$PYTHON" -m pytest -m e2e "$@"
 TEST_EXIT_CODE=$?
 set -e
 
