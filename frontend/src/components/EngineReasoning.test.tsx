@@ -4,25 +4,46 @@ import { describe, expect, it } from "vitest";
 import EngineReasoning from "./EngineReasoning";
 
 describe("EngineReasoning", () => {
-  it("renders survival metrics from analysis", () => {
+  it("renders human-centric metrics when playing Black", () => {
     render(
       <EngineReasoning
-        survivalScore={3}
+        humanSide="B"
+        boardSize={19}
+        metrics={{ unresolved_count: 12, min_black_probability: 0.41 }}
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: /engine reasoning/i });
+    expect(region).toHaveTextContent("Points still disputed");
+    expect(region).toHaveTextContent("12 / 361");
+    expect(region).toHaveTextContent("Most vulnerable point");
+    expect(region).toHaveTextContent("41% Black control (target: 95%+)");
+    expect(screen.queryByText("Survival score")).not.toBeInTheDocument();
+  });
+
+  it("renders human-centric metrics when playing White", () => {
+    render(
+      <EngineReasoning
+        humanSide="W"
+        boardSize={19}
         metrics={{ unresolved_count: 3, min_black_probability: 0.41 }}
       />,
     );
 
     const region = screen.getByRole("region", { name: /engine reasoning/i });
-    expect(region).toBeInTheDocument();
-    expect(region).toHaveTextContent("Survival score");
-    expect(region).toHaveTextContent("0.410");
-    expect(screen.getAllByText("3")).toHaveLength(2);
+    expect(region).toHaveTextContent("Points still in play");
+    expect(region).toHaveTextContent("3 / 361");
+    expect(region).toHaveTextContent("Strongest foothold");
+    expect(region).toHaveTextContent(
+      "59% non-Black control (keep any point in play)",
+    );
   });
 
   it("renders ranked candidate comparison rows and highlights the selected move", () => {
     render(
       <EngineReasoning
-        survivalScore={1}
+        humanSide="W"
+        boardSize={19}
         metrics={{ unresolved_count: 1, min_black_probability: 0.4 }}
         candidates={[
           { move: "Q16", survival_score: 1, min_black_probability: 0.4 },
@@ -34,7 +55,11 @@ describe("EngineReasoning", () => {
 
     const table = screen.getByRole("table", { name: /candidate comparison/i });
     expect(table).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /points in play/i })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /best foothold/i })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /q16/i })).toHaveAttribute("data-selected", "true");
     expect(screen.getByRole("row", { name: /d4/i })).toHaveAttribute("data-selected", "false");
+    expect(screen.getByRole("row", { name: /q16/i })).toHaveTextContent("60%");
+    expect(screen.getByRole("row", { name: /d4/i })).toHaveTextContent("65%");
   });
 });

@@ -88,14 +88,21 @@ describe("GameSetup", () => {
     expect(blackFlavoured).toBeChecked();
   });
 
-  it("renders human side selection as Black and White", () => {
+  it("renders human side selection with role descriptions", () => {
     render(
       <GameSetup presets={SAMPLE_PRESETS} difficultyPresets={DIFFICULTY_PRESETS} onStart={vi.fn()} />,
     );
 
     expect(screen.getByRole("radiogroup", { name: /^your color$/i })).toBeInTheDocument();
-    expect(sideGroup().getByRole("radio", { name: /^black$/i })).toBeInTheDocument();
-    expect(sideGroup().getByRole("radio", { name: /^white$/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/black tries to secure the whole board\. white tries to survive at any cost/i),
+    ).toBeInTheDocument();
+    expect(
+      sideGroup().getByRole("radio", { name: /black: take the whole board/i }),
+    ).toBeInTheDocument();
+    expect(
+      sideGroup().getByRole("radio", { name: /white: make a single living group/i }),
+    ).toBeInTheDocument();
   });
 
   it("defaults human side to the selected preset initial player", async () => {
@@ -106,7 +113,9 @@ describe("GameSetup", () => {
 
     await user.click(presetGroup().getByRole("radio", { name: /^black flavoured$/i }));
 
-    expect(sideGroup().getByRole("radio", { name: /^white$/i })).toBeChecked();
+    expect(
+      sideGroup().getByRole("radio", { name: /white: make a single living group/i }),
+    ).toBeChecked();
   });
 
   it("allows start when human picks Black on a White-to-move preset", async () => {
@@ -120,7 +129,9 @@ describe("GameSetup", () => {
       />,
     );
 
-    await user.click(sideGroup().getByRole("radio", { name: /^black$/i }));
+    await user.click(
+      sideGroup().getByRole("radio", { name: /black: take the whole board/i }),
+    );
     await user.click(screen.getByRole("button", { name: /start game/i }));
 
     expect(onStart).toHaveBeenCalledWith({

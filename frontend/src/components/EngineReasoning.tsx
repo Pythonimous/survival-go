@@ -1,31 +1,36 @@
-import type { CandidateSummary, SurvivalMetrics } from "../types/api";
+import {
+  candidateColumnLabels,
+  formatCandidateBottleneck,
+  formatPositionMetrics,
+} from "../lib/survivalDisplay";
+import type { CandidateSummary, StoneColor, SurvivalMetrics } from "../types/api";
 
 type EngineReasoningProps = {
-  survivalScore: number;
+  humanSide: StoneColor;
+  boardSize: number;
   metrics: SurvivalMetrics;
   candidates?: readonly CandidateSummary[];
   selectedMove?: string;
 };
 
-function formatProbability(value: number): string {
-  return value.toFixed(3);
-}
-
 export default function EngineReasoning({
-  survivalScore,
+  humanSide,
+  boardSize,
   metrics,
   candidates,
   selectedMove,
 }: EngineReasoningProps) {
+  const positionLabels = formatPositionMetrics(metrics, humanSide, boardSize);
+  const columns = candidateColumnLabels(humanSide);
+
   return (
     <section aria-label="Engine reasoning" className="engine-reasoning">
       <h2>Position analysis</h2>
       <dl className="engine-metrics">
-        <MetricPair label="Survival score" value={String(survivalScore)} />
-        <MetricPair label="Unresolved points" value={String(metrics.unresolved_count)} />
+        <MetricPair label={positionLabels.disputedLabel} value={positionLabels.disputedValue} />
         <MetricPair
-          label="Min black probability"
-          value={formatProbability(metrics.min_black_probability)}
+          label={positionLabels.bottleneckLabel}
+          value={positionLabels.bottleneckValue}
         />
       </dl>
       {candidates && candidates.length > 0 && (
@@ -34,8 +39,8 @@ export default function EngineReasoning({
             <tr>
               <th scope="col">#</th>
               <th scope="col">Move</th>
-              <th scope="col">Survival score</th>
-              <th scope="col">Min p(black)</th>
+              <th scope="col">{columns.disputedHeader}</th>
+              <th scope="col">{columns.bottleneckHeader}</th>
             </tr>
           </thead>
           <tbody>
@@ -48,7 +53,7 @@ export default function EngineReasoning({
                 <td>{index + 1}</td>
                 <td>{candidate.move}</td>
                 <td>{candidate.survival_score}</td>
-                <td>{formatProbability(candidate.min_black_probability)}</td>
+                <td>{formatCandidateBottleneck(candidate.min_black_probability, humanSide)}</td>
               </tr>
             ))}
           </tbody>

@@ -32,6 +32,14 @@ const ADVANCED_FIELD_HELP = {
   },
 } as const;
 
+const HUMAN_SIDE_ROLE_HINT =
+  "Black tries to secure the whole board. White tries to survive at any cost.";
+
+const HUMAN_SIDE_LABELS: Record<StoneColor, string> = {
+  B: "Black: take the whole board",
+  W: "White: make a single living group.",
+};
+
 type GameSetupProps = {
   presets: readonly PresetMetadata[];
   difficultyPresets: readonly DifficultyPreset[];
@@ -121,6 +129,7 @@ export default function GameSetup({ presets, difficultyPresets, onStart }: GameS
 
       <fieldset>
         <legend>Your color</legend>
+        <p className="game-setup__hint">{HUMAN_SIDE_ROLE_HINT}</p>
         <div role="radiogroup" aria-label="Your color" className="game-setup__sides">
           {(["B", "W"] as const).map((side) => (
             <label key={side}>
@@ -131,7 +140,7 @@ export default function GameSetup({ presets, difficultyPresets, onStart }: GameS
                 checked={humanSide === side}
                 onChange={() => setHumanSide(side)}
               />
-              {side === "B" ? "Black" : "White"}
+              {HUMAN_SIDE_LABELS[side]}
             </label>
           ))}
         </div>

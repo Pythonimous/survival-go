@@ -206,10 +206,15 @@ body {
   font-weight: 600;
 }
 
-.game-setup__disclaimer {
+.game-setup__disclaimer,
+.game-setup__hint {
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
   color: #555;
+}
+
+.game-setup__hint {
+  margin-top: -0.25rem;
 }
 
 .game-setup__advanced {

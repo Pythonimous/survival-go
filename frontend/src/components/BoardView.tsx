@@ -339,7 +339,8 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
             </div>
             {reasoning ? (
               <EngineReasoning
-                survivalScore={reasoning.survivalScore}
+                humanSide={gameState.human_side}
+                boardSize={gameState.board_size}
                 metrics={reasoning.metrics}
                 candidates={reasoning.candidates}
                 selectedMove={reasoning.selectedMove}

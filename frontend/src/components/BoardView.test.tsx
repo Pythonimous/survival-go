@@ -472,7 +472,10 @@ describe("BoardView", () => {
       ),
     );
     expect(await screen.findByRole("region", { name: /engine reasoning/i })).toBeInTheDocument();
-    expect(screen.getByText("0.550")).toBeInTheDocument();
+    expect(
+      screen.getByText("45% non-Black control (keep any point in play)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 / 361")).toBeInTheDocument();
   });
 
   it("shows engine metrics and candidate table after automatic engine response", async () => {
