@@ -1,7 +1,7 @@
-# Production VM: localhost-only port 9080 (not 8080 — avoids clash with local compose).
-# Caddy (or nginx) on 80/443 reverse-proxies to 127.0.0.1:9080.
+# Production VM: publish UI on localhost:9080 (local compose uses 8080).
+# Caddy on 80/443 reverse-proxies to http://127.0.0.1:9080
 # Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 services:
   frontend:
-    ports: !reset
+    ports:
       - "127.0.0.1:9080:80"

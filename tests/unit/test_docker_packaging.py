@@ -37,7 +37,7 @@ def test_compose_local_and_prod_use_distinct_host_ports() -> None:
     prod = COMPOSE_PROD.read_text(encoding="utf-8")
     assert "8080" in local
     assert "9080" in prod
-    assert "!reset" in prod
+    assert "127.0.0.1:9080:80" in prod
     base = COMPOSE_FILE.read_text(encoding="utf-8")
     assert '"8080:80"' not in base
 

@@ -169,9 +169,15 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 **Checkpoint on the server:**
 
 ```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker port survival-go-frontend-1
+# should show 127.0.0.1:9080 -> 80/tcp
+
 curl -fsS http://127.0.0.1:9080/health
 curl -fsS http://127.0.0.1:9080/api/presets | head
 ```
+
+If `curl` cannot connect but the container is Up, port mapping is missing — run `git pull`, confirm `docker-compose.prod.yml` contains `127.0.0.1:9080:80` (no `!reset`), then `docker compose ... up -d --force-recreate`.
 
 Expected: health JSON with `"status":"ok"`; presets list non-empty.
 
