@@ -40,6 +40,24 @@ if [[ ! -x "$INSTALL_DIR/katago" ]]; then
     chmod +x "$INSTALL_DIR/katago"
 fi
 
+# Linux release builds are AppImages. They need FUSE on the host, which Docker lacks
+# (stderr: "fuse: device not found"). Extract the payload once so katago runs without FUSE.
+katago_bin="$INSTALL_DIR/katago"
+appimage_run="$INSTALL_DIR/squashfs-root/AppRun"
+if [[ -x "$katago_bin" ]] && [[ ! -x "$appimage_run" ]]; then
+    if grep -aq 'AppImage' "$katago_bin" 2>/dev/null; then
+        echo "Extracting KataGo AppImage payload (no FUSE required)..."
+        (cd "$INSTALL_DIR" && ./katago --appimage-extract)
+        if [[ ! -x "$appimage_run" ]]; then
+            echo "AppImage extract failed: missing $appimage_run" >&2
+            exit 1
+        fi
+        mv "$katago_bin" "$INSTALL_DIR/katago.appimage"
+        ln -s squashfs-root/AppRun "$katago_bin"
+        echo "Installed FUSE-free KataGo at $katago_bin -> squashfs-root/AppRun"
+    fi
+fi
+
 model_path="$INSTALL_DIR/$MODEL_NAME"
 download "$MODEL_URL" "$model_path"
 

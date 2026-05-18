@@ -207,7 +207,7 @@ sudo apt-get install -y caddy
 Create Caddyfile (replace domain):
 
 ```bash
-export PLAY_HOST="play.example.com"
+export PLAY_HOST="survival-go.com"
 echo "${PLAY_HOST} {
     reverse_proxy 127.0.0.1:9080
 }" | sudo tee /etc/caddy/Caddyfile
@@ -219,8 +219,8 @@ Caddy obtains a Let's Encrypt certificate on first request (ports 80/443 must be
 **Checkpoint from your laptop:**
 
 ```bash
-curl -fsS "https://play.example.com/health"
-curl -fsS "https://play.example.com/api/presets" | head
+curl -fsS "https://survival-go.com/health"
+curl -fsS "https://survival-go.com/api/presets" | head
 ```
 
 Open `https://play.example.com` in a browser → presets → start a game → play a move.
@@ -280,6 +280,7 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 | Backend restart loop | Usually KataGo paths or OOM → try `t3.large` |
 | HTTPS certificate fails | DNS A record points to Elastic IP; ports 80/443 open |
 | Site loads, engine times out | Raise `KATAGO_ANALYSIS_TIMEOUT_SECONDS` |
+| Instant `failed to analyze game with KataGo`; stderr `fuse: device not found` | Rebuild backend image on latest repo (`setup_katago.sh` extracts AppImage without FUSE) |
 | Out of disk on first build | 30 GiB minimum; KataGo + model are large |
 
 ---

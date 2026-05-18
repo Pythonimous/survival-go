@@ -131,6 +131,18 @@ Message: *“Real KataGo not configured…”*
 - Run `./scripts/setup_katago.sh` or set all three `KATAGO_*` variables.
 - Paths must exist, and the binary must be executable.
 
+### Docker / EC2: `fuse: device not found` or instant `JSONDecodeError`
+
+Linux release zips ship an **AppImage**; Docker has no FUSE device, so the wrapper prints errors to stdout instead of JSON.
+
+Re-run setup (or rebuild the backend image) so the AppImage payload is extracted:
+
+```bash
+./scripts/setup_katago.sh   # writes katago -> squashfs-root/AppRun
+```
+
+`scripts/setup_katago.sh` runs `--appimage-extract` automatically when it detects an AppImage.
+
 ### `KataGo stdout closed before analysis completed`
 
 Usually the process crashed on startup. Check:

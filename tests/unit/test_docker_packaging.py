@@ -43,6 +43,15 @@ def test_compose_local_and_prod_use_distinct_host_ports() -> None:
 
 
 @pytest.mark.unit
+def test_setup_katago_extracts_appimage_without_fuse() -> None:
+    """Docker has no /dev/fuse; release zips ship an AppImage that must be extracted."""
+    script = PROJECT_ROOT / "scripts" / "setup_katago.sh"
+    text = script.read_text(encoding="utf-8")
+    assert "--appimage-extract" in text
+    assert "squashfs-root/AppRun" in text
+
+
+@pytest.mark.unit
 def test_backend_dockerfile_installs_katago_and_runs_uvicorn() -> None:
     assert BACKEND_DOCKERFILE.is_file()
     text = BACKEND_DOCKERFILE.read_text(encoding="utf-8")
