@@ -16,7 +16,7 @@ Local-first web prototype for a Go training variant built around **total board o
 
 Verify: `./scripts/run_tests.sh fast` and `curl http://127.0.0.1:8000/health`.
 
-**Docker Compose (optional):** `docker compose up --build` then open http://127.0.0.1:8080/ — see [`docs/development/docker-compose.md`](docs/development/docker-compose.md).
+**Docker Compose (optional):** `docker compose -f docker-compose.yml -f docker-compose.local.yml up --build` then open http://127.0.0.1:8080/ — see [`docs/development/docker-compose.md`](docs/development/docker-compose.md).
 
 **E2E tests:** set `E2E_SERVER_COMMAND` to customize server startup; `E2E_SERVER_DISABLED=true` when tests manage their own server.
 

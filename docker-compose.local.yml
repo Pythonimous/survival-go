@@ -1,0 +1,6 @@
+# Local / laptop: publish the UI on host port 8080.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+services:
+  frontend:
+    ports:
+      - "127.0.0.1:8080:80"

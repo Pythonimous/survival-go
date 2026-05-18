@@ -6,6 +6,8 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = PROJECT_ROOT / "docker-compose.yml"
+COMPOSE_LOCAL = PROJECT_ROOT / "docker-compose.local.yml"
+COMPOSE_PROD = PROJECT_ROOT / "docker-compose.prod.yml"
 BACKEND_DOCKERFILE = PROJECT_ROOT / "docker" / "backend" / "Dockerfile"
 FRONTEND_DOCKERFILE = PROJECT_ROOT / "docker" / "frontend" / "Dockerfile"
 NGINX_CONF = PROJECT_ROOT / "docker" / "frontend" / "nginx.conf"
@@ -25,6 +27,19 @@ def test_compose_file_defines_backend_and_frontend_services() -> None:
     assert "frontend:" in text
     assert "docker/backend/Dockerfile" in text
     assert "docker/frontend/Dockerfile" in text
+
+
+@pytest.mark.unit
+def test_compose_local_and_prod_use_distinct_host_ports() -> None:
+    assert COMPOSE_LOCAL.is_file()
+    assert COMPOSE_PROD.is_file()
+    local = COMPOSE_LOCAL.read_text(encoding="utf-8")
+    prod = COMPOSE_PROD.read_text(encoding="utf-8")
+    assert "8080" in local
+    assert "9080" in prod
+    assert "!reset" in prod
+    base = COMPOSE_FILE.read_text(encoding="utf-8")
+    assert '"8080:80"' not in base
 
 
 @pytest.mark.unit

@@ -14,7 +14,7 @@ Browser  -->  https://play.example.com
                     |
                     v
               docker compose (same as local packaging)
-                frontend (nginx) :8080 on localhost
+                frontend (nginx) :9080 on localhost
                 backend (FastAPI + KataGo)
 ```
 
@@ -164,13 +164,13 @@ First start (downloads KataGo + model; **10–30+ minutes**):
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-`docker-compose.prod.yml` binds the app to **127.0.0.1:8080** so only Caddy faces the public internet.
+`docker-compose.prod.yml` binds the app to **127.0.0.1:9080** (not 8080 — local compose uses 8080) so only Caddy faces the public internet.
 
 **Checkpoint on the server:**
 
 ```bash
-curl -fsS http://127.0.0.1:8080/health
-curl -fsS http://127.0.0.1:8080/api/presets | head
+curl -fsS http://127.0.0.1:9080/health
+curl -fsS http://127.0.0.1:9080/api/presets | head
 ```
 
 Expected: health JSON with `"status":"ok"`; presets list non-empty.
@@ -203,7 +203,7 @@ Create Caddyfile (replace domain):
 ```bash
 export PLAY_HOST="play.example.com"
 echo "${PLAY_HOST} {
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy 127.0.0.1:9080
 }" | sudo tee /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
@@ -259,7 +259,7 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 
 **Sessions:** Games live in backend memory. Rebooting the VM ends in-progress games (same as local). One KataGo process per server — see [shared-katago-engine.md](shared-katago-engine.md).
 
-**Security basics:** SSH restricted to your IP; no need to expose port 8080 publicly; keep Ubuntu updated (`sudo apt upgrade`).
+**Security basics:** SSH restricted to your IP; app listens on localhost **9080** only; keep Ubuntu updated (`sudo apt upgrade`).
 
 ---
 
@@ -268,8 +268,9 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 | Symptom | What to check |
 |---------|----------------|
 | Docker frontend build: `Cannot find module '../lib/api'` | `frontend/src/lib/` was missing from git (old `.gitignore` had `lib/`). Pull latest repo; confirm `ls frontend/src/lib/api.ts` exists before build. |
+| `failed to bind host port ... address already in use` | `docker compose ... down`, then `sudo ss -tlnp \| grep -E '8080|9080'`. Prod uses **9080** only; do not run local compose (8080) on the same VM. |
 | SSH timeout | Security group allows 22 from your current IP; instance running |
-| `curl 127.0.0.1:8080` fails | `docker compose logs backend`; first build still running |
+| `curl 127.0.0.1:9080` fails | `docker compose logs backend`; first build still running |
 | Backend restart loop | Usually KataGo paths or OOM → try `t3.large` |
 | HTTPS certificate fails | DNS A record points to Elastic IP; ports 80/443 open |
 | Site loads, engine times out | Raise `KATAGO_ANALYSIS_TIMEOUT_SECONDS` |
@@ -297,7 +298,7 @@ Until then, the single-VM path matches the repo’s Docker packaging and is enou
 - [ ] Namecheap A record `play` → Elastic IP
 - [ ] Docker + compose plugin on server
 - [ ] `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
-- [ ] `curl http://127.0.0.1:8080/health` on server
+- [ ] `curl http://127.0.0.1:9080/health` on server
 - [ ] Caddy → `https://play.<domain>`
 - [ ] Browser: presets, move, engine reply
 - [ ] Optional: `smoke_deploy.py` against `https://play.<domain>`

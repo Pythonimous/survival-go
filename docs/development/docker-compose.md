@@ -9,7 +9,11 @@ Run the full stack in containers without installing Python, Node, or KataGo on t
 | `backend` | FastAPI + one shared KataGo subprocess (`analysis.docker.cfg`) |
 | `frontend` | Built React app behind nginx; proxies `/api` and `/health` to the backend |
 
-Open **http://127.0.0.1:8080/** after `docker compose up`.
+Open **http://127.0.0.1:8080/** after:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+```
 
 ## Prerequisites
 
@@ -22,7 +26,7 @@ Open **http://127.0.0.1:8080/** after `docker compose up`.
 From the repo root:
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 ```
 
 First build can take several minutes (KataGo + model + `npm ci`).
@@ -58,7 +62,7 @@ Same checklist as [local-run.md](local-run.md) (presets, play a move, engine mov
 ## Rebuild after code changes
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 ```
 
 Rebuild only one service:
@@ -76,7 +80,7 @@ docker compose build frontend
 | `backend` unhealthy / restarts | `docker compose logs backend`; KataGo paths inside image |
 | Presets fail in UI | `curl http://127.0.0.1:8080/health` and `/api/presets` |
 | Engine move timeout | Raise `KATAGO_ANALYSIS_TIMEOUT_SECONDS` in compose |
-| Port 8080 in use | Change `frontend.ports` in `docker-compose.yml` (e.g. `"3000:80"`) |
+| Port 8080 in use | Change host port in `docker-compose.local.yml` (e.g. `"127.0.0.1:3000:80"`) |
 
 Games are in-memory; `docker compose down` clears sessions. One KataGo process serves all games (see [shared-katago-engine.md](shared-katago-engine.md)).
 
@@ -85,7 +89,8 @@ Games are in-memory; `docker compose down` clears sessions. One KataGo process s
 | Path | Purpose |
 |------|---------|
 | `docker-compose.yml` | Service definitions and healthcheck |
-| `docker-compose.prod.yml` | Bind frontend to `127.0.0.1:8080` for reverse-proxy TLS on a VM |
+| `docker-compose.local.yml` | Publish UI on `127.0.0.1:8080` (laptop / local) |
+| `docker-compose.prod.yml` | Publish UI on `127.0.0.1:9080` for Caddy on a VM (not 8080) |
 | `docker/backend/Dockerfile` | Python app + `setup_katago.sh` at build |
 | `docker/frontend/Dockerfile` | Vite build + nginx |
 | `docker/frontend/nginx.conf` | Static assets + API proxy |
