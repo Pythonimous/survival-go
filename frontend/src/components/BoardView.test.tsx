@@ -2,8 +2,21 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { GameState } from "../types/api";
+import type { DifficultyConfig, GameState } from "../types/api";
 import BoardView from "./BoardView";
+
+const SAMPLE_DIFFICULTY: DifficultyConfig = {
+  max_visits: 20,
+  top_n: 4,
+  randomness: 0.35,
+  variant_awareness: 0.6,
+  policy_anchor: 0.45,
+  score_anchor: 0.1,
+  temperature: 0.35,
+  blunder_margin: 0.04,
+  global_weight: 1.0,
+  local_weight: 0.0,
+};
 
 function activeGame(
   overrides: Omit<GameState, "status" | "winner" | "last_move"> &
@@ -586,7 +599,7 @@ describe("BoardView", () => {
             engine_side: "W",
             next_to_move: "W",
             moves_played: 0,
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             stones: PRESET_SETUP_STONES,
           }),
         ),
@@ -601,7 +614,7 @@ describe("BoardView", () => {
             engine_side: "W",
             next_to_move: "B",
             moves_played: 0,
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             stones: PRESET_SETUP_STONES,
           }),
           status: "finished",
@@ -623,7 +636,7 @@ describe("BoardView", () => {
             engine_side: "W",
             next_to_move: "B",
             moves_played: 0,
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             status: "finished",
             winner: "B",
             stones: PRESET_SETUP_STONES,
@@ -650,7 +663,7 @@ describe("BoardView", () => {
             engine_side: "W",
             next_to_move: "W",
             moves_played: 0,
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             stones: PRESET_SETUP_STONES,
           }),
         ),
@@ -665,7 +678,7 @@ describe("BoardView", () => {
             engine_side: "W",
             next_to_move: "B",
             moves_played: 0,
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             stones: PRESET_SETUP_STONES,
           }),
           status: "finished",
@@ -689,7 +702,7 @@ describe("BoardView", () => {
             moves_played: 0,
             status: "finished",
             winner: "B",
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             stones: PRESET_SETUP_STONES,
           }),
         ),
@@ -701,7 +714,7 @@ describe("BoardView", () => {
     expect(onTryAgain).toHaveBeenCalledWith({
       preset_id: "balanced",
       human_side: "B",
-      difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+      difficulty: SAMPLE_DIFFICULTY,
     });
   });
 
@@ -720,7 +733,7 @@ describe("BoardView", () => {
             next_to_move: "W",
             moves_played: 1,
             last_move: "D4",
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             stones: [{ move: "D4", color: "W" }],
           }),
         ),
@@ -736,7 +749,7 @@ describe("BoardView", () => {
             next_to_move: "B",
             moves_played: 1,
             last_move: "D4",
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             status: "finished",
             winner: "B",
             stones: [{ move: "D4", color: "W" }],
@@ -754,7 +767,7 @@ describe("BoardView", () => {
             next_to_move: "B",
             moves_played: 1,
             last_move: "D4",
-            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            difficulty: SAMPLE_DIFFICULTY,
             status: "finished",
             winner: "B",
             stones: [{ move: "D4", color: "W" }],
