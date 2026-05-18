@@ -85,13 +85,25 @@ Games are in-memory; `docker compose down` clears sessions. One KataGo process s
 | Path | Purpose |
 |------|---------|
 | `docker-compose.yml` | Service definitions and healthcheck |
+| `docker-compose.prod.yml` | Bind frontend to `127.0.0.1:8080` for reverse-proxy TLS on a VM |
 | `docker/backend/Dockerfile` | Python app + `setup_katago.sh` at build |
 | `docker/frontend/Dockerfile` | Vite build + nginx |
 | `docker/frontend/nginx.conf` | Static assets + API proxy |
 | `.dockerignore` | Keeps local `.venv`, `node_modules`, host KataGo artifacts out of context |
 
+## Production on one cloud VM
+
+Bind to localhost and put Caddy (or nginx) in front for HTTPS:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Full steps (EC2, Elastic IP, Namecheap DNS): [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md).
+
 ## See also
 
+- [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md) — recommended AWS path (one server)
 - [cloud-backend-container.md](cloud-backend-container.md) — same backend image for ECR/ECS deploy
 - [environment.md](environment.md) — all env vars, defaults, and safe overrides
 - [local-run.md](local-run.md) — native dev run (venv + npm)

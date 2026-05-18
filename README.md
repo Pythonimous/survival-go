@@ -45,7 +45,8 @@ This repository is licensed under the [MIT License](LICENSE). **KataGo** (MIT), 
 ## References
 
 - **Environment variables:** `docs/development/environment.md`
-- **Cloud deployment topology (AWS ECS MVP):** `docs/development/cloud-aws-ecs-topology.md`
+- **AWS deploy (simple — one VM + Docker Compose):** `docs/development/cloud-aws-zero-to-domain-runbook.md`
+- **Cloud deployment topology (ECS + ALB + CDN, later):** `docs/development/cloud-aws-ecs-topology.md`
 - **Cloud backend container (ECR / KataGo wiring):** `docs/development/cloud-backend-container.md`
 - **Cloud frontend static (S3 / API base URL):** `docs/development/cloud-frontend-static.md`
 - **Cloud env, sizing, and KataGo timeouts:** `docs/development/cloud-env-and-sizing.md`

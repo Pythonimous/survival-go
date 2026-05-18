@@ -1,0 +1,7 @@
+# Production on a single host: bind the stack to localhost only.
+# TLS terminates on Caddy (or another reverse proxy) on ports 80/443.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  frontend:
+    ports:
+      - "127.0.0.1:8080:80"

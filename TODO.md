@@ -76,7 +76,7 @@ Done when: project can be packaged and run reproducibly in a fresh local environ
 - [x] Add production frontend build and publish path (static assets + API base URL configuration).
 - [x] Document required cloud env vars, resource sizing, and timeout limits for KataGo analysis workloads.
 - [x] Add deploy automation with post-deploy smoke checks (`GET /health`, optional analyze smoke).
-- [ ] Add runbook for AWS setup, zero to having the website w/custom domain up and ready.
+- [x] Add runbook for AWS setup, zero to having the website w/custom domain up and ready.
 Done when: a documented cloud path can deploy backend, frontend, and KataGo dependencies and pass smoke checks in a non-local environment.
 
 ## 7. Integration Tests

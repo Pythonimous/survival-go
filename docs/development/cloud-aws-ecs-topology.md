@@ -1,6 +1,8 @@
-# Cloud deployment topology (AWS + ECS, MVP)
+# Cloud deployment topology (AWS + ECS)
 
-This document defines the MVP cloud topology for Survival Go using your chosen constraints:
+> **Default for getting online:** one EC2 VM + Docker Compose + Caddy — [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md). This document describes the **heavier** split stack (ECS + ALB + S3 + CloudFront) for when you outgrow a single server.
+
+This document defines the full AWS topology for Survival Go when you choose:
 
 - AWS-first
 - ECS runtime
@@ -9,7 +11,7 @@ This document defines the MVP cloud topology for Survival Go using your chosen c
 - low cost with acceptable latency
 - custom domain managed in Namecheap
 
-Backend container image and KataGo path wiring: [cloud-backend-container.md](cloud-backend-container.md). Frontend static build and S3 publish: [cloud-frontend-static.md](cloud-frontend-static.md). **Env vars, Fargate sizing, and analysis timeouts:** [cloud-env-and-sizing.md](cloud-env-and-sizing.md). **Deploy scripts and post-deploy smoke:** [cloud-deploy-automation.md](cloud-deploy-automation.md).
+Backend container image and KataGo path wiring: [cloud-backend-container.md](cloud-backend-container.md). Frontend static build and S3 publish: [cloud-frontend-static.md](cloud-frontend-static.md). **Env vars, Fargate sizing, and analysis timeouts:** [cloud-env-and-sizing.md](cloud-env-and-sizing.md). **Deploy scripts and post-deploy smoke:** [cloud-deploy-automation.md](cloud-deploy-automation.md). **Simple day-zero runbook:** [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md). **Full ECS runbook:** [cloud-aws-ecs-full-runbook.md](cloud-aws-ecs-full-runbook.md).
 
 ## Recommended topology
 

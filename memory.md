@@ -540,6 +540,16 @@
 - Validation: `pytest tests/unit/test_deploy_smoke.py -m unit`, `mypy .`, `pytest -m lint`.
 - Validation: doc review only (no doc tests per `.cursor/rules/development.mdc`).
 
+## AWS zero-to-domain runbook (2026-05-17)
+
+- Added `docs/development/cloud-aws-zero-to-domain-runbook.md` with day-zero AWS setup from account bootstrap through ECR/ECS/ALB/S3/CloudFront/ACM/Namecheap DNS and smoke verification.
+- Linked runbook from `docs/development/cloud-aws-ecs-topology.md` and `README.md`.
+- Marked `TODO.md` section 6 final item complete (cloud deployment section now fully checked).
+- Expanded the runbook with detailed least-privilege IAM guidance: distinct principals (deployer, execution role, task role), concrete AWS action families, `iam:PassRole` scoping, and starter policy skeletons.
+- Rewrote runbook again as a single full walkthrough: no assumed AWS CLI login, Console navigation paths for IAM user + ECS roles, deployer policy JSON, VPC/ALB/ECS/S3/CloudFront/ACM/Namecheap in order, checkpoints, troubleshooting appendix, printable checklist.
+- User feedback: ECS/ALB/CloudWatch overkill for current stage. **Default runbook** is now one EC2 + `docker compose` + Caddy (`docker-compose.prod.yml` binds localhost). Heavy path moved to `cloud-aws-ecs-full-runbook.md`; topology doc points to simple path first.
+- Validation: doc review only (documentation task; no new doc tests).
+
 ## Policy: no documentation tests (2026-05-17)
 
 - `.cursor/rules/development.mdc` and `testing.mdc` forbid new pytest that grep markdown/README/docs. Legacy `test_*_docs.py` files remain until explicitly removed; do not extend them.
@@ -553,7 +563,7 @@
 - **Local run & packaging (5):** `local-run.md`, Docker Compose (`docker-compose.yml`, `docker/`), `environment.md`, `release-checklist.md`, `run_tests.sh` `release` alias.
 - **Cloud MVP (6, 5/6 items):** ECS topology, backend image (`docker/backend/Dockerfile`, `build_backend_image.sh`), frontend static publish (`apiUrl()`, `build_frontend.sh`, `publish_frontend_s3.sh`, `CORS_ALLOW_ORIGINS`), env/sizing doc, deploy automation (`deploy_cloud.sh`, `smoke_deploy.py`, `backend/app/deploy/smoke.py`).
 
-**Outstanding:** section 6 AWS zero-to-domain runbook; sections 7–9 (integration fixtures, logging/errors, polish docs).
+**Outstanding:** sections 7–9 (`TODO.md`: integration fixtures, logging/errors, polish docs).
 
 **Close-phase validation:** `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` — 291 passed. No `@pytest.mark.e2e` tests in tree yet.
 
