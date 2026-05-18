@@ -267,6 +267,7 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 
 | Symptom | What to check |
 |---------|----------------|
+| Docker frontend build: `Cannot find module '../lib/api'` | `frontend/src/lib/` was missing from git (old `.gitignore` had `lib/`). Pull latest repo; confirm `ls frontend/src/lib/api.ts` exists before build. |
 | SSH timeout | Security group allows 22 from your current IP; instance running |
 | `curl 127.0.0.1:8080` fails | `docker compose logs backend`; first build still running |
 | Backend restart loop | Usually KataGo paths or OOM → try `t3.large` |
