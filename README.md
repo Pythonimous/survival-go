@@ -36,7 +36,9 @@ Black wins if Black can eventually own/control 100% of the board (all 361 points
 White wins if White can prevent Black from achieving 100% board ownership.
 ```
 
-KataGo supplies normal-Go understanding and ownership predictions; the Survival evaluator reinterpretes them for this asymmetric objective. The first milestone is a local web app where a human plays either side against the engine.
+KataGo supplies normal-Go understanding and ownership predictions; the Survival evaluator reinterprets them for this asymmetric objective. The first milestone is a local web app where a human plays either side against the engine.
+
+The objective shaping is intentionally simple and directional: evaluate each candidate move by the board's weakest ownership point for Black (`min p_black`). If the engine is playing Black, it picks moves that raise that floor (fix the weakest point first); if it is playing White, it picks moves that lower the same floor (make Black's weakest point even weaker). This reframes move choice around a single bottleneck metric, which lets the project repurpose a strong general model for Survival Go behavior without retraining.
 
 ## License
 
