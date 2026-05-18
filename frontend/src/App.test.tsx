@@ -40,7 +40,18 @@ describe("App", () => {
           id: "normal",
           name: "Normal",
           description: "Balanced baseline",
-          config: { max_visits: 20, top_n: 4, randomness: 0.35 },
+          config: {
+            max_visits: 20,
+            top_n: 4,
+            randomness: 0.35,
+            variant_awareness: 0.6,
+            policy_anchor: 0.45,
+            score_anchor: 0.1,
+            temperature: 0.35,
+            blunder_margin: 0.04,
+            global_weight: 1.0,
+            local_weight: 0.0,
+          },
         },
       ]),
     );
@@ -71,7 +82,18 @@ describe("App", () => {
             id: "normal",
             name: "Normal",
             description: "Balanced baseline",
-            config: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            config: {
+              max_visits: 20,
+              top_n: 4,
+              randomness: 0.35,
+              variant_awareness: 0.6,
+              policy_anchor: 0.45,
+              score_anchor: 0.1,
+              temperature: 0.35,
+              blunder_margin: 0.04,
+              global_weight: 1.0,
+              local_weight: 0.0,
+            },
           },
         ]),
       )
@@ -104,10 +126,20 @@ describe("App", () => {
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preset_id: "balanced",
-          human_side: "W",
-          difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+      }),
+    );
+    const createCall = fetchMock.mock.calls[2];
+    const createPayload = JSON.parse(String((createCall[1] as RequestInit).body));
+    expect(createPayload).toEqual(
+      expect.objectContaining({
+        preset_id: "balanced",
+        human_side: "W",
+        difficulty: expect.objectContaining({
+          max_visits: 20,
+          top_n: 4,
+          randomness: 0.35,
+          variant_awareness: 0.6,
+          temperature: 0.35,
         }),
       }),
     );
@@ -134,7 +166,18 @@ describe("App", () => {
           id: "normal",
           name: "Normal",
           description: "Balanced baseline",
-          config: { max_visits: 20, top_n: 4, randomness: 0.35 },
+          config: {
+            max_visits: 20,
+            top_n: 4,
+            randomness: 0.35,
+            variant_awareness: 0.6,
+            policy_anchor: 0.45,
+            score_anchor: 0.1,
+            temperature: 0.35,
+            blunder_margin: 0.04,
+            global_weight: 1.0,
+            local_weight: 0.0,
+          },
         },
       ]),
     );
@@ -166,7 +209,18 @@ describe("App", () => {
             id: "normal",
             name: "Normal",
             description: "Balanced baseline",
-            config: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            config: {
+              max_visits: 20,
+              top_n: 4,
+              randomness: 0.35,
+              variant_awareness: 0.6,
+              policy_anchor: 0.45,
+              score_anchor: 0.1,
+              temperature: 0.35,
+              blunder_margin: 0.04,
+              global_weight: 1.0,
+              local_weight: 0.0,
+            },
           },
         ]),
       )

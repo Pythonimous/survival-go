@@ -9,6 +9,7 @@ import pytest
 from backend.app.engine.board import format_gtp_coordinate, to_sgfmill_color
 from backend.app.difficulty import DifficultyConfig
 from backend.app.game_service import GameServiceError, InMemoryGameService
+from backend.app.katago.client import KataGoMoveInfo
 from backend.app.presets.loader import get_preset_by_id
 
 
@@ -90,7 +91,7 @@ class _EngineMoveKataGoClient:
         board_size: int,
         max_visits: int,
         komi: float = 7.5,
-    ) -> list[str]:
+    ) -> list[KataGoMoveInfo]:
         self.candidate_calls.append(
             {
                 "query_id": query_id,
@@ -102,7 +103,10 @@ class _EngineMoveKataGoClient:
                 "komi": komi,
             }
         )
-        return list(self._candidate_moves)
+        return [
+            KataGoMoveInfo(move=move, policy=0.0, score_lead=None)
+            for move in self._candidate_moves
+        ]
 
     def analyze_position(
         self,
@@ -191,13 +195,23 @@ def test_create_game_allows_human_black_when_preset_pl_is_white() -> None:
     assert game.next_to_move == "W"
     assert game.moves_played == 0
     assert game.last_move is None
-    assert game.difficulty == DifficultyConfig(max_visits=20, top_n=8, randomness=0.0)
+    assert game.difficulty.max_visits == 20
+    assert game.difficulty.top_n == 8
+    assert game.difficulty.randomness == pytest.approx(0.0)
+    assert game.difficulty.temperature == pytest.approx(0.0)
 
 
 @pytest.mark.unit
 def test_create_game_accepts_custom_difficulty() -> None:
     service = InMemoryGameService(survival_threshold=0.95)
-    custom = DifficultyConfig(max_visits=40, top_n=3, randomness=0.25)
+    custom = DifficultyConfig(
+        max_visits=40,
+        top_n=3,
+        randomness=0.25,
+        variant_awareness=0.5,
+        temperature=0.25,
+        blunder_margin=0.02,
+    )
 
     game = service.create_game(preset_id="balanced", human_side="W", difficulty=custom)
 
@@ -337,7 +351,7 @@ def test_apply_engine_move_uses_katago_candidates_and_survival_rerank() -> None:
     assert outcome.move == candidate_b
     assert outcome.survival_score == 0
     assert outcome.metrics.min_black_probability == pytest.approx(1.0)
-    assert [candidate.move for candidate in outcome.candidates] == [candidate_b, candidate_a]
+    assert [candidate.move for candidate in outcome.candidates] == [candidate_b]
     assert len(katago_client.candidate_calls) == 1
     assert len(katago_client.analysis_calls) == 3
     assert katago_client.candidate_calls[0]["query_id"] == f"engine-candidates-{game.game_id}"
@@ -484,7 +498,7 @@ def test_apply_engine_move_uses_game_difficulty_for_visits_and_top_n() -> None:
 
 
 @pytest.mark.unit
-def test_apply_engine_move_uses_randomness_for_non_top_choice() -> None:
+def test_apply_engine_move_uses_temperature_sampling_for_non_top_choice() -> None:
     base = [1.0] * 361
     weaker = [0.7] + base[1:]
     human_side = get_preset_by_id("balanced").initial_player_to_move
@@ -507,7 +521,7 @@ def test_apply_engine_move_uses_randomness_for_non_top_choice() -> None:
         candidate_moves=[best_move, alt_move],
         ownership_by_move={best_move: base, alt_move: weaker},
     )
-    random_source = _DeterministicRandom(random_values=[0.2], choice_index=0)
+    random_source = _DeterministicRandom(random_values=[0.99], choice_index=0)
     service = InMemoryGameService(
         survival_threshold=0.95,
         katago_client_factory=lambda: katago_client,
@@ -516,15 +530,70 @@ def test_apply_engine_move_uses_randomness_for_non_top_choice() -> None:
     game = service.create_game(
         preset_id="balanced",
         human_side=human_side,
-        difficulty=DifficultyConfig(max_visits=20, top_n=2, randomness=0.5),
+        difficulty=DifficultyConfig(
+            max_visits=20,
+            top_n=2,
+            randomness=0.5,
+            temperature=0.5,
+            blunder_margin=1.0,
+        ),
     )
     service.apply_human_move(game_id=game.game_id, move=human_move)
 
     outcome = service.apply_engine_move(game_id=game.game_id)
 
-    assert outcome.move == alt_move
+    assert outcome.move in {best_move, alt_move}
     assert random_source.random_calls == 1
-    assert random_source.choice_calls == 1
+    assert random_source.choice_calls == 0
+
+
+@pytest.mark.unit
+def test_apply_engine_move_blunder_margin_filters_low_score_candidates() -> None:
+    base = [1.0] * 361
+    near_best = [0.985] + base[1:]
+    blunder = [0.3] + base[1:]
+    human_side = get_preset_by_id("balanced").initial_player_to_move
+    seed_service = InMemoryGameService(
+        survival_threshold=0.95,
+        katago_client_factory=lambda: _EngineMoveKataGoClient(
+            candidate_moves=[], ownership_by_move={}
+        ),
+    )
+    seed_game = seed_service.create_game(preset_id="balanced", human_side=human_side)
+    human_move = _first_legal_move_for_side("balanced", side=human_side)
+    seed_service.apply_human_move(game_id=seed_game.game_id, move=human_move)
+    best_move, second_move, third_move = _first_n_legal_moves_for_game(
+        seed_service,
+        seed_game.game_id,
+        side=seed_game.engine_side,
+        n=3,
+    )
+    katago_client = _EngineMoveKataGoClient(
+        candidate_moves=[best_move, second_move, third_move],
+        ownership_by_move={best_move: base, second_move: near_best, third_move: blunder},
+    )
+    service = InMemoryGameService(
+        survival_threshold=0.95,
+        katago_client_factory=lambda: katago_client,
+    )
+    game = service.create_game(
+        preset_id="balanced",
+        human_side=human_side,
+        difficulty=DifficultyConfig(
+            max_visits=20,
+            top_n=3,
+            randomness=0.0,
+            variant_awareness=1.0,
+            blunder_margin=0.02,
+            temperature=0.0,
+        ),
+    )
+    service.apply_human_move(game_id=game.game_id, move=human_move)
+
+    outcome = service.apply_engine_move(game_id=game.game_id)
+
+    assert outcome.move == best_move
+    assert [candidate.move for candidate in outcome.candidates] == [best_move, second_move]
 
 
 @pytest.mark.unit
@@ -590,3 +659,34 @@ def test_apply_human_move_rejects_finished_game() -> None:
 
     with pytest.raises(GameServiceError, match="game is already finished"):
         service.apply_human_move(game_id=game.game_id, move=move)
+
+
+@pytest.mark.unit
+def test_apply_human_resign_finishes_game_with_engine_winner() -> None:
+    service = InMemoryGameService(survival_threshold=0.95)
+    game = service.create_game(preset_id="balanced", human_side="W")
+    human_move = _first_legal_move_for_side("balanced", side="W")
+    service.apply_human_move(game_id=game.game_id, move=human_move)
+    moves_before = game.moves_played
+
+    updated = service.apply_human_resign(game_id=game.game_id)
+
+    assert updated.status == "finished"
+    assert updated.winner == "B"
+    assert updated.moves_played == moves_before
+    assert updated.next_to_move == "B"
+
+
+@pytest.mark.unit
+def test_apply_human_resign_rejects_finished_game() -> None:
+    dominant_black = [0.995] + [0.996] * 360
+    katago_client = _FakeKataGoClient(dominant_black)
+    service = InMemoryGameService(
+        survival_threshold=0.95,
+        katago_client_factory=lambda: katago_client,
+    )
+    game = service.create_game(preset_id="balanced", human_side="B")
+    service.apply_engine_move(game_id=game.game_id)
+
+    with pytest.raises(GameServiceError, match="game is already finished"):
+        service.apply_human_resign(game_id=game.game_id)

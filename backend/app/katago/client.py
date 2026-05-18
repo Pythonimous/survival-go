@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from backend.app.config import Settings
@@ -14,6 +15,24 @@ from backend.app.engine.board import StoneColor
 from backend.app.katago.ownership import parse_ownership_from_response
 
 EMPTY_BOARD_QUERY_ID = "empty-board"
+
+
+@dataclass(frozen=True, slots=True)
+class KataGoMoveInfo:
+    move: str
+    policy: float
+    score_lead: float | None
+
+
+def _to_float_or_none(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 def build_analysis_query(
@@ -43,12 +62,12 @@ def build_analysis_query(
     }
 
 
-def parse_candidate_moves_from_response(response: dict[str, Any]) -> list[str]:
-    """Extract ordered KataGo candidate move coordinates from moveInfos."""
+def parse_candidate_moves_from_response(response: dict[str, Any]) -> list[KataGoMoveInfo]:
+    """Extract ordered KataGo candidate metadata from moveInfos."""
     move_infos = response.get("moveInfos")
     if not isinstance(move_infos, list):
         raise ValueError("KataGo response missing moveInfos")
-    candidates: list[str] = []
+    candidates: list[KataGoMoveInfo] = []
     for move_info in move_infos:
         if not isinstance(move_info, dict):
             continue
@@ -58,7 +77,13 @@ def parse_candidate_moves_from_response(response: dict[str, Any]) -> list[str]:
         normalized = move.strip().upper()
         if not normalized or normalized == "PASS":
             continue
-        candidates.append(normalized)
+        candidates.append(
+            KataGoMoveInfo(
+                move=normalized,
+                policy=_to_float_or_none(move_info.get("policy")) or 0.0,
+                score_lead=_to_float_or_none(move_info.get("scoreLead")),
+            )
+        )
     return candidates
 
 
@@ -150,7 +175,7 @@ class KataGoClient:
         board_size: int = 19,
         max_visits: int = 20,
         komi: float = 7.5,
-    ) -> list[str]:
+    ) -> list[KataGoMoveInfo]:
         """Analyze a position and return ordered move candidates from KataGo."""
         query = build_analysis_query(
             query_id=query_id,

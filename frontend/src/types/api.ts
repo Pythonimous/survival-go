@@ -39,6 +39,13 @@ export type DifficultyConfig = {
   max_visits: number;
   top_n: number;
   randomness: number;
+  variant_awareness: number;
+  policy_anchor: number;
+  score_anchor: number;
+  temperature: number;
+  blunder_margin: number;
+  global_weight: number;
+  local_weight: number;
 };
 
 export type DifficultyPreset = {

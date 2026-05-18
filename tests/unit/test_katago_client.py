@@ -14,6 +14,7 @@ import pytest
 
 from backend.app.config import Settings
 from backend.app.katago.client import (
+    KataGoMoveInfo,
     KataGoClient,
     build_analysis_query,
     parse_candidate_moves_from_response,
@@ -221,7 +222,9 @@ def test_get_candidate_moves_parses_move_infos(
         max_visits=11,
     )
 
-    assert candidates == ["Q16", "D4"]
+    assert [candidate.move for candidate in candidates] == ["Q16", "D4"]
+    assert candidates[0].policy == pytest.approx(0.0)
+    assert candidates[0].score_lead is None
     written = process.stdin.write.call_args[0][0]
     query = json.loads(written.strip())
     assert query["id"] == "candidate-abc"
@@ -232,6 +235,25 @@ def test_get_candidate_moves_parses_move_infos(
 def test_parse_candidate_moves_rejects_missing_move_infos() -> None:
     with pytest.raises(ValueError, match="moveInfos"):
         parse_candidate_moves_from_response({"id": "missing"})
+
+
+@pytest.mark.unit
+def test_parse_candidate_moves_extracts_policy_and_score_lead() -> None:
+    parsed = parse_candidate_moves_from_response(
+        {
+            "id": "candidate-with-metadata",
+            "moveInfos": [
+                {"move": "Q16", "policy": 0.23, "scoreLead": 3.4},
+                {"move": "D4", "policy": "0.11", "scoreLead": "-1.5"},
+                {"move": "PASS", "policy": 0.9, "scoreLead": 9.9},
+            ],
+        }
+    )
+
+    assert parsed == [
+        KataGoMoveInfo(move="Q16", policy=0.23, score_lead=3.4),
+        KataGoMoveInfo(move="D4", policy=0.11, score_lead=-1.5),
+    ]
 
 
 @pytest.mark.unit

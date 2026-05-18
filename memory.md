@@ -568,3 +568,31 @@
 **Close-phase validation:** `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` — 291 passed. No `@pytest.mark.e2e` tests in tree yet.
 
 **Close-phase fixes:** `cloud-aws-ecs-topology.md` smoke section mentions `GET /health`; `BoardView.test.tsx` `activeGame()` helper defaults `last_move` without TS2783 duplicate-key error.
+
+## Natural difficulty curve v2 (2026-05-17)
+
+- `backend/app/difficulty.py` now includes expanded knobs (`variant_awareness`, `policy_anchor`, `score_anchor`, `temperature`, `blunder_margin`, `global_weight`, `local_weight`) with compatibility mapping from legacy `randomness`.
+- `backend/app/katago/client.py` now returns structured candidate metadata via `KataGoMoveInfo` (`move`, `policy`, optional `score_lead`) instead of plain move strings.
+- `backend/app/engine/move_selector.py` now implements composite side-aware scoring, blunder filtering (`best - blunder_margin`), and softmax temperature sampling while preserving deterministic `temperature=0` behavior.
+- `backend/app/game_service.py` threads candidate metadata into `CandidateMove`, ranks with expanded difficulty config, filters reported candidate list by blunder margin, and selects via temperature sampler.
+- Frontend contracts/UI updated:
+  - `frontend/src/types/api.ts` `DifficultyConfig` now includes expanded fields.
+  - `frontend/src/components/GameSetup.tsx` advanced controls now center on `Variant awareness` and `Variety temperature` (with legacy `randomness` serialized from temperature for backward compatibility).
+- Validation completed:
+  - `./.venv/bin/python -m pytest tests/unit/test_difficulty.py tests/unit/test_katago_client.py tests/unit/test_move_selector.py tests/unit/test_game_service.py -m unit`
+  - `npm --prefix frontend test -- src/components/GameSetup.test.tsx src/App.test.tsx --run`
+  - `./.venv/bin/python -m mypy .`
+  - `./.venv/bin/python -m pytest -m lint`
+
+## Human resign (2026-05-17)
+
+- `InMemoryGameService.apply_human_resign`: sets `status=finished`, `winner=engine_side`; rejects finished games.
+- API: `POST /api/games/{game_id}/resign` → `GameStateResponse`.
+- Frontend: **Resign** in `BoardView` (confirm dialog); `GameOverDialog` supports `outcome` `human_win` | `human_loss`.
+
+## Survival difficulty model docs (2026-05-17)
+
+- Added concise newcomer-oriented explainer: `docs/development/survival-difficulty-model.md`.
+- Covers old selector vs v2 pipeline, composite-score composition, tuning guidance, threshold semantics, and glossary.
+- Linked from `README.md` References.
+- Marked TODO item complete: "Add docs for Survival scoring semantics and threshold tuning."

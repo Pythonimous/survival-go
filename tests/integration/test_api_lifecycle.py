@@ -248,6 +248,27 @@ def test_engine_move_white_resigns_when_black_ownership_dominates(
 
 
 @pytest.mark.integration
+def test_human_resign_finishes_game_with_engine_winner(api_client: TestClient) -> None:
+    create_response = api_client.post(
+        "/api/games",
+        json={"preset_id": "balanced", "human_side": "W"},
+    )
+    assert create_response.status_code == 201
+    game_id = create_response.json()["game_id"]
+
+    resign_response = api_client.post(f"/api/games/{game_id}/resign")
+    assert resign_response.status_code == 200
+    payload = resign_response.json()
+    assert payload["status"] == "finished"
+    assert payload["winner"] == "B"
+    assert payload["human_side"] == "W"
+
+    state_response = api_client.get(f"/api/games/{game_id}")
+    assert state_response.json()["status"] == "finished"
+    assert state_response.json()["winner"] == "B"
+
+
+@pytest.mark.integration
 def test_delete_game_ends_session_and_returns_not_found_afterward(
     api_client: TestClient,
 ) -> None:

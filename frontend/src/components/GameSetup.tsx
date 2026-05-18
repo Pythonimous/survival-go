@@ -18,12 +18,17 @@ const ADVANCED_FIELD_HELP = {
   topN: {
     hint: "How many best moves the engine keeps in its shortlist before picking one.",
     detail:
-      "KataGo ranks moves by survival score. Only the top N candidates stay in the shortlist used for selection. Lower values make play more focused; higher values allow more variety before randomness is applied.",
+      "KataGo ranks moves by composite Survival difficulty score. Only the top N candidates stay in the shortlist used for blunder filtering and final selection.",
   },
-  randomness: {
-    hint: "Chance to skip the top-ranked move and sample another move from the top candidates (0–1).",
+  variantAwareness: {
+    hint: "How strongly to prioritize the Survival objective over plausible KataGo ideas (0-1).",
     detail:
-      "On each engine turn, with probability equal to this value, the engine skips the #1 ranked move and uniformly chooses among ranks 2 through N. At 0 it always plays the top move; at 1 it never picks #1 when N is at least 2.",
+      "Higher values make the engine focus on the side-aware bottleneck objective. Lower values keep more policy-guided variation, which feels more human-like on easier settings.",
+  },
+  temperature: {
+    hint: "How much variety the engine keeps when sampling among safe candidates.",
+    detail:
+      "After filtering blunders, the engine softmax-samples by score. Lower temperature is more deterministic; higher temperature explores alternatives while still respecting the margin.",
   },
 } as const;
 
@@ -40,7 +45,10 @@ export default function GameSetup({ presets, difficultyPresets, onStart }: GameS
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [maxVisits, setMaxVisits] = useState(difficultyPresets[0]?.config.max_visits ?? 20);
   const [topN, setTopN] = useState(difficultyPresets[0]?.config.top_n ?? 4);
-  const [randomness, setRandomness] = useState(difficultyPresets[0]?.config.randomness ?? 0.35);
+  const [variantAwareness, setVariantAwareness] = useState(
+    difficultyPresets[0]?.config.variant_awareness ?? 0.6,
+  );
+  const [temperature, setTemperature] = useState(difficultyPresets[0]?.config.temperature ?? 0.35);
 
   const selectedPreset = presets.find((preset) => preset.id === presetId);
   const selectedDifficultyPreset = difficultyPresets.find(
@@ -59,7 +67,8 @@ export default function GameSetup({ presets, difficultyPresets, onStart }: GameS
     }
     setMaxVisits(selectedDifficultyPreset.config.max_visits);
     setTopN(selectedDifficultyPreset.config.top_n);
-    setRandomness(selectedDifficultyPreset.config.randomness);
+    setVariantAwareness(selectedDifficultyPreset.config.variant_awareness);
+    setTemperature(selectedDifficultyPreset.config.temperature);
   }, [selectedDifficultyPreset?.id]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -70,7 +79,14 @@ export default function GameSetup({ presets, difficultyPresets, onStart }: GameS
     const difficulty: DifficultyConfig = {
       max_visits: Math.max(1, Math.floor(maxVisits)),
       top_n: Math.max(1, Math.floor(topN)),
-      randomness: Math.min(1, Math.max(0, randomness)),
+      randomness: Math.min(1, Math.max(0, temperature)),
+      variant_awareness: Math.min(1, Math.max(0, variantAwareness)),
+      policy_anchor: selectedDifficultyPreset.config.policy_anchor,
+      score_anchor: selectedDifficultyPreset.config.score_anchor,
+      temperature: Math.max(0, temperature),
+      blunder_margin: selectedDifficultyPreset.config.blunder_margin,
+      global_weight: selectedDifficultyPreset.config.global_weight,
+      local_weight: selectedDifficultyPreset.config.local_weight,
     };
     onStart({
       preset_id: selectedPreset.id,
@@ -184,21 +200,38 @@ export default function GameSetup({ presets, difficultyPresets, onStart }: GameS
             />
           </div>
           <div className="game-setup__field">
-            <label htmlFor="game-setup-randomness">Randomness</label>
+            <label htmlFor="game-setup-variant-awareness">Variant awareness</label>
             <FieldHelp
-              fieldName="Randomness"
-              hint={ADVANCED_FIELD_HELP.randomness.hint}
-              detail={ADVANCED_FIELD_HELP.randomness.detail}
+              fieldName="Variant awareness"
+              hint={ADVANCED_FIELD_HELP.variantAwareness.hint}
+              detail={ADVANCED_FIELD_HELP.variantAwareness.detail}
             />
             <input
-              id="game-setup-randomness"
+              id="game-setup-variant-awareness"
               className="game-setup__field-input"
               type="number"
               min={0}
               max={1}
               step={0.01}
-              value={randomness}
-              onChange={(event) => setRandomness(Number(event.target.value))}
+              value={variantAwareness}
+              onChange={(event) => setVariantAwareness(Number(event.target.value))}
+            />
+          </div>
+          <div className="game-setup__field">
+            <label htmlFor="game-setup-temperature">Variety temperature</label>
+            <FieldHelp
+              fieldName="Variety temperature"
+              hint={ADVANCED_FIELD_HELP.temperature.hint}
+              detail={ADVANCED_FIELD_HELP.temperature.detail}
+            />
+            <input
+              id="game-setup-temperature"
+              className="game-setup__field-input"
+              type="number"
+              min={0}
+              step={0.01}
+              value={temperature}
+              onChange={(event) => setTemperature(Number(event.target.value))}
             />
           </div>
         </fieldset>

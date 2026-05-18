@@ -2,102 +2,166 @@
 
 import pytest
 
+from backend.app.difficulty import DifficultyConfig
 from backend.app.engine.move_selector import (
     CandidateMove,
-    choose_engine_move,
+    filter_blunders,
     rank_candidates_for_side,
+    select_candidate_for_side,
 )
 
 
-def _candidate(move: str, score: int, *, min_black_probability: float = 0.5) -> CandidateMove:
+def _candidate(
+    move: str,
+    score: int,
+    *,
+    min_black_probability: float = 0.5,
+    policy: float = 0.0,
+    score_lead: float | None = None,
+) -> CandidateMove:
     return CandidateMove(
         move=move,
         survival_score=score,
         min_black_probability=min_black_probability,
+        policy=policy,
+        score_lead=score_lead,
     )
 
 
 @pytest.mark.unit
-def test_choose_engine_move_black_maximizes_min_black_probability() -> None:
+def test_rank_candidates_for_side_black_prefers_high_composite_score() -> None:
+    config = DifficultyConfig(
+        max_visits=20,
+        top_n=3,
+        randomness=0.0,
+        variant_awareness=0.4,
+        policy_anchor=0.6,
+        temperature=0.0,
+    )
     candidates = [
-        _candidate("D4", 5, min_black_probability=0.3),
-        _candidate("Q16", 2, min_black_probability=0.5),
-        _candidate("K10", 3, min_black_probability=0.4),
+        _candidate("D4", 3, min_black_probability=0.40, policy=0.2),
+        _candidate("Q16", 5, min_black_probability=0.42, policy=0.9),
+        _candidate("K10", 2, min_black_probability=0.41, policy=0.4),
     ]
 
-    selected = choose_engine_move(candidates, engine_side="B")
+    ranked = rank_candidates_for_side(candidates, engine_side="B", difficulty=config)
 
-    assert selected.move == "Q16"
-    assert selected.min_black_probability == pytest.approx(0.5)
+    assert [candidate.move for candidate in ranked] == ["Q16", "K10", "D4"]
 
 
 @pytest.mark.unit
-def test_choose_engine_move_white_minimizes_min_black_probability() -> None:
+def test_rank_candidates_for_side_white_uses_side_aware_survival_term() -> None:
+    config = DifficultyConfig(
+        max_visits=20,
+        top_n=3,
+        randomness=0.0,
+        variant_awareness=1.0,
+        temperature=0.0,
+    )
     candidates = [
-        _candidate("D4", 1, min_black_probability=0.2),
-        _candidate("Q16", 6, min_black_probability=0.5),
-        _candidate("K10", 4, min_black_probability=0.3),
+        _candidate("D4", 1, min_black_probability=0.45),
+        _candidate("Q16", 6, min_black_probability=0.30),
+        _candidate("K10", 4, min_black_probability=0.40),
     ]
 
-    selected = choose_engine_move(candidates, engine_side="W")
+    ranked = rank_candidates_for_side(candidates, engine_side="W", difficulty=config)
 
-    assert selected.move == "D4"
-    assert selected.min_black_probability == pytest.approx(0.2)
+    assert [candidate.move for candidate in ranked] == ["Q16", "K10", "D4"]
 
 
 @pytest.mark.unit
-def test_rank_candidates_for_side_orders_by_min_black_probability_for_white() -> None:
+def test_filter_blunders_keeps_candidates_within_margin() -> None:
+    config = DifficultyConfig(
+        max_visits=20,
+        top_n=3,
+        randomness=0.0,
+        variant_awareness=1.0,
+        blunder_margin=0.015,
+        temperature=0.0,
+    )
     candidates = [
-        _candidate("D4", 2, min_black_probability=0.5),
-        _candidate("Q16", 5, min_black_probability=0.8),
-        _candidate("K10", 3, min_black_probability=0.6),
+        _candidate("D4", 2, min_black_probability=0.600),
+        _candidate("Q16", 5, min_black_probability=0.588),
+        _candidate("K10", 3, min_black_probability=0.560),
     ]
 
-    ranked = rank_candidates_for_side(candidates, engine_side="W")
+    ranked = rank_candidates_for_side(candidates, engine_side="B", difficulty=config)
+    filtered = filter_blunders(ranked, engine_side="B", difficulty=config)
 
-    assert [candidate.move for candidate in ranked] == ["D4", "K10", "Q16"]
+    assert [candidate.move for candidate in filtered] == ["D4", "Q16"]
 
 
 @pytest.mark.unit
-def test_choose_engine_move_black_uses_min_survival_score_as_tiebreaker() -> None:
-    candidates = [
-        _candidate("H12", 355, min_black_probability=0.435),
-        _candidate("L12", 350, min_black_probability=0.435),
-    ]
+def test_select_candidate_for_side_temperature_zero_is_deterministic() -> None:
+    class _RandomStub:
+        def __init__(self) -> None:
+            self.calls = 0
 
-    selected = choose_engine_move(candidates, engine_side="B")
+        def random(self) -> float:
+            self.calls += 1
+            return 0.99
+
+    config = DifficultyConfig(max_visits=20, top_n=3, randomness=0.0, temperature=0.0)
+    candidates = [
+        _candidate("H12", 355, min_black_probability=0.435, policy=0.1),
+        _candidate("L12", 350, min_black_probability=0.445, policy=0.2),
+    ]
+    random_source = _RandomStub()
+
+    selected = select_candidate_for_side(
+        candidates,
+        engine_side="B",
+        difficulty=config,
+        random_source=random_source,
+    )
 
     assert selected.move == "L12"
-    assert selected.survival_score == 350
+    assert random_source.calls == 0
 
 
 @pytest.mark.unit
-def test_choose_engine_move_white_uses_max_survival_score_as_tiebreaker() -> None:
+def test_select_candidate_for_side_temperature_sampling_uses_random_source() -> None:
+    class _RandomStub:
+        def __init__(self, value: float) -> None:
+            self.value = value
+            self.calls = 0
+
+        def random(self) -> float:
+            self.calls += 1
+            return self.value
+
+    config = DifficultyConfig(
+        max_visits=20,
+        top_n=3,
+        randomness=0.0,
+        variant_awareness=1.0,
+        temperature=0.05,
+        blunder_margin=1.0,
+    )
     candidates = [
-        _candidate("H12", 355, min_black_probability=0.435),
-        _candidate("L12", 360, min_black_probability=0.435),
+        _candidate("A1", 1, min_black_probability=0.60),
+        _candidate("B1", 1, min_black_probability=0.59),
+        _candidate("C1", 1, min_black_probability=0.40),
     ]
+    random_source = _RandomStub(0.999)
 
-    selected = choose_engine_move(candidates, engine_side="W")
+    selected = select_candidate_for_side(
+        candidates,
+        engine_side="B",
+        difficulty=config,
+        random_source=random_source,
+    )
 
-    assert selected.move == "L12"
-    assert selected.survival_score == 360
+    assert selected.move in {"A1", "B1", "C1"}
+    assert random_source.calls == 1
 
 
 @pytest.mark.unit
-def test_rank_candidates_for_side_black_orders_survival_score_on_min_tie() -> None:
-    candidates = [
-        _candidate("H12", 355, min_black_probability=0.435),
-        _candidate("L12", 350, min_black_probability=0.435),
-        _candidate("M10", 356, min_black_probability=0.464),
-    ]
-
-    ranked = rank_candidates_for_side(candidates, engine_side="B")
-
-    assert [candidate.move for candidate in ranked] == ["M10", "L12", "H12"]
-
-
-@pytest.mark.unit
-def test_choose_engine_move_rejects_empty_candidates() -> None:
+def test_select_candidate_for_side_rejects_empty_candidates() -> None:
     with pytest.raises(ValueError, match="at least one candidate"):
-        choose_engine_move([], engine_side="B")
+        select_candidate_for_side(
+            [],
+            engine_side="B",
+            difficulty=DifficultyConfig(max_visits=20, top_n=2, randomness=0.0),
+            random_source=object(),
+        )

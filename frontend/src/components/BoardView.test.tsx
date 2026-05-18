@@ -705,6 +705,103 @@ describe("BoardView", () => {
     });
   });
 
+  it("resigns the game when Resign is confirmed", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(
+          activeGame({
+            game_id: "game-1",
+            preset_id: "balanced",
+            board_size: 19,
+            human_side: "W",
+            engine_side: "B",
+            next_to_move: "W",
+            moves_played: 1,
+            last_move: "D4",
+            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            stones: [{ move: "D4", color: "W" }],
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          activeGame({
+            game_id: "game-1",
+            preset_id: "balanced",
+            board_size: 19,
+            human_side: "W",
+            engine_side: "B",
+            next_to_move: "B",
+            moves_played: 1,
+            last_move: "D4",
+            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            status: "finished",
+            winner: "B",
+            stones: [{ move: "D4", color: "W" }],
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          activeGame({
+            game_id: "game-1",
+            preset_id: "balanced",
+            board_size: 19,
+            human_side: "W",
+            engine_side: "B",
+            next_to_move: "B",
+            moves_played: 1,
+            last_move: "D4",
+            difficulty: { max_visits: 20, top_n: 4, randomness: 0.35 },
+            status: "finished",
+            winner: "B",
+            stones: [{ move: "D4", color: "W" }],
+          }),
+        ),
+      );
+
+    renderBoard();
+    await screen.findByRole("button", { name: /^resign$/i });
+    await user.click(screen.getByRole("button", { name: /^resign$/i }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/games/game-1/resign"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(await screen.findByRole("dialog", { name: /you resigned/i })).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it("does not resign when Resign is cancelled", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        activeGame({
+          game_id: "game-1",
+          preset_id: "balanced",
+          board_size: 19,
+          human_side: "W",
+          engine_side: "B",
+          next_to_move: "W",
+          moves_played: 0,
+          stones: [],
+        }),
+      ),
+    );
+
+    renderBoard();
+    await screen.findByRole("button", { name: /^resign$/i });
+    await user.click(screen.getByRole("button", { name: /^resign$/i }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    confirmSpy.mockRestore();
+  });
+
   it("calls onNewGame when New game is clicked", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(

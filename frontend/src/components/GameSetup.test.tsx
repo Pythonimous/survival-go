@@ -25,13 +25,35 @@ const DIFFICULTY_PRESETS: DifficultyPreset[] = [
     id: "easy",
     name: "Easy",
     description: "Fast and forgiving",
-    config: { max_visits: 12, top_n: 6, randomness: 0.7 },
+    config: {
+      max_visits: 12,
+      top_n: 6,
+      randomness: 0.7,
+      variant_awareness: 0.35,
+      policy_anchor: 0.6,
+      score_anchor: 0.1,
+      temperature: 0.7,
+      blunder_margin: 0.08,
+      global_weight: 1.0,
+      local_weight: 0.0,
+    },
   },
   {
     id: "normal",
     name: "Normal",
     description: "Balanced baseline",
-    config: { max_visits: 20, top_n: 4, randomness: 0.35 },
+    config: {
+      max_visits: 20,
+      top_n: 4,
+      randomness: 0.35,
+      variant_awareness: 0.6,
+      policy_anchor: 0.45,
+      score_anchor: 0.1,
+      temperature: 0.35,
+      blunder_margin: 0.04,
+      global_weight: 1.0,
+      local_weight: 0.0,
+    },
   },
 ];
 
@@ -104,7 +126,13 @@ describe("GameSetup", () => {
     expect(onStart).toHaveBeenCalledWith({
       preset_id: "balanced",
       human_side: "B",
-      difficulty: { max_visits: 12, top_n: 6, randomness: 0.7 },
+      difficulty: expect.objectContaining({
+        max_visits: 12,
+        top_n: 6,
+        randomness: 0.7,
+        variant_awareness: 0.35,
+        temperature: 0.7,
+      }),
     });
   });
 
@@ -125,7 +153,13 @@ describe("GameSetup", () => {
     expect(onStart).toHaveBeenCalledWith({
       preset_id: "black-flavoured",
       human_side: "W",
-      difficulty: { max_visits: 12, top_n: 6, randomness: 0.7 },
+      difficulty: expect.objectContaining({
+        max_visits: 12,
+        top_n: 6,
+        randomness: 0.7,
+        variant_awareness: 0.35,
+        temperature: 0.7,
+      }),
     });
   });
 
@@ -145,14 +179,21 @@ describe("GameSetup", () => {
     await user.type(screen.getByRole("spinbutton", { name: /^max visits$/i }), "42");
     await user.clear(screen.getByRole("spinbutton", { name: /^top candidates$/i }));
     await user.type(screen.getByRole("spinbutton", { name: /^top candidates$/i }), "3");
-    await user.clear(screen.getByRole("spinbutton", { name: /^randomness$/i }));
-    await user.type(screen.getByRole("spinbutton", { name: /^randomness$/i }), "0.15");
+    await user.clear(screen.getByRole("spinbutton", { name: /^variant awareness$/i }));
+    await user.type(screen.getByRole("spinbutton", { name: /^variant awareness$/i }), "0.7");
+    await user.clear(screen.getByRole("spinbutton", { name: /^variety temperature$/i }));
+    await user.type(screen.getByRole("spinbutton", { name: /^variety temperature$/i }), "0.15");
     await user.click(screen.getByRole("button", { name: /start game/i }));
 
     expect(onStart).toHaveBeenCalledWith({
       preset_id: "balanced",
       human_side: "W",
-      difficulty: { max_visits: 42, top_n: 3, randomness: 0.15 },
+      difficulty: expect.objectContaining({
+        max_visits: 42,
+        top_n: 3,
+        variant_awareness: 0.7,
+        temperature: 0.15,
+      }),
     });
   });
 
@@ -174,9 +215,15 @@ describe("GameSetup", () => {
 
     expect(screen.getByText(/simulations kataGo runs per decision/i)).toBeInTheDocument();
     expect(screen.getByText(/best moves the engine keeps in its shortlist/i)).toBeInTheDocument();
-    expect(screen.getByText(/skip the top-ranked move/i)).toBeInTheDocument();
+    expect(screen.getByText(/plausible kataGo ideas/i)).toBeInTheDocument();
+    expect(screen.getByText(/how much variety the engine keeps/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /more information about max visits/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /more information about top candidates/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /more information about randomness/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /more information about variant awareness/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /more information about variety temperature/i }),
+    ).toBeInTheDocument();
   });
 });

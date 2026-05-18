@@ -9,10 +9,18 @@ describe("GameOverDialog", () => {
     const user = userEvent.setup();
     const onTryAgain = vi.fn();
 
-    render(<GameOverDialog onTryAgain={onTryAgain} />);
+    render(<GameOverDialog outcome="human_win" onTryAgain={onTryAgain} />);
 
     expect(screen.getByRole("dialog", { name: /you win/i })).toBeInTheDocument();
+    expect(screen.getByText(/engine resigned/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /try again/i }));
     expect(onTryAgain).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows resignation loss copy when the human resigned", () => {
+    render(<GameOverDialog outcome="human_loss" onTryAgain={() => undefined} />);
+
+    expect(screen.getByRole("dialog", { name: /you resigned/i })).toBeInTheDocument();
+    expect(screen.getByText(/engine wins/i)).toBeInTheDocument();
   });
 });

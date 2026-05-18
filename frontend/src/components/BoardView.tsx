@@ -103,6 +103,16 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
     };
   }, [loadGameState]);
 
+  const submitHumanResign = async (): Promise<void> => {
+    const response = await fetch(apiUrl(`/api/games/${gameId}/resign`), {
+      method: "POST",
+    });
+    if (!response.ok) {
+      await readApiFailure(response, "Could not resign game.");
+    }
+    setGameState(await loadGameState());
+  };
+
   const submitHumanMove = async (move: string): Promise<void> => {
     const response = await fetch(apiUrl(`/api/games/${gameId}/move`), {
       method: "POST",
@@ -194,6 +204,24 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
     }
   };
 
+  const handleResign = async () => {
+    if (!gameState || isGameFinished) {
+      return;
+    }
+    if (!window.confirm("Resign this game? The engine will win.")) {
+      return;
+    }
+    setErrorMessage(null);
+    setIsTurnInProgress(true);
+    try {
+      await submitHumanResign();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not resign game.");
+    } finally {
+      setIsTurnInProgress(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     setErrorMessage(null);
     setIsAnalyzing(true);
@@ -244,6 +272,12 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
     isGameFinished &&
     gameState?.winner !== null &&
     gameState.winner === gameState.human_side;
+  const humanLost =
+    isGameFinished &&
+    gameState?.winner !== null &&
+    gameState.winner === gameState.engine_side;
+  const showGameOverDialog = humanWon || humanLost;
+  const gameOverOutcome = humanWon ? "human_win" : "human_loss";
   const canHumanPlay =
     gameState !== null &&
     !isGameFinished &&
@@ -257,8 +291,9 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
   return (
     <section aria-label="Board view">
       {errorMessage && <p role="alert">{errorMessage}</p>}
-      {humanWon && gameState && (
+      {showGameOverDialog && gameState && (
         <GameOverDialog
+          outcome={gameOverOutcome}
           onTryAgain={() =>
             onTryAgain({
               preset_id: gameState.preset_id,
@@ -290,6 +325,13 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
                 disabled={isAnalyzing || isTurnInProgress || isGameFinished}
               >
                 Analyze position
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleResign()}
+                disabled={isTurnInProgress || isGameFinished}
+              >
+                Resign
               </button>
               <button type="button" onClick={onNewGame}>
                 New game

@@ -86,6 +86,7 @@ Done when: a documented cloud path can deploy backend, frontend, and KataGo depe
 Done when: integration suite validates happy path plus critical failure handling for API and KataGo boundary.
 
 ## 8. Non-functional (logging, config, error handling)
+- [x] Implement natural difficulty curve v2 (composite scoring, blunder margin, temperature sampling, variant awareness controls) across backend + frontend.
 - [ ] Add structured backend logging for game lifecycle events, engine requests, and failures.
 - [ ] Add typed error model and consistent API error responses across endpoints.
 - [ ] Add timeout/retry boundaries around KataGo requests with actionable error messages.
@@ -94,7 +95,7 @@ Done when: operational failures are observable, actionable, and do not crash the
 
 ## 9. Polish and Docs
 - [ ] Document API endpoints and request/response examples in `README.md`.
-- [ ] Add docs for Survival scoring semantics and threshold tuning.
+- [x] Add docs for Survival scoring semantics and threshold tuning.
 - [ ] Create/update user flow docs for UF-1 to UF-4 and ensure index is updated.
 - [ ] Add troubleshooting section for common local setup issues (path mismatch, model/config mismatch, timeout).
 Done when: a new local user can install, run, play a scenario, and debug setup issues using docs only.

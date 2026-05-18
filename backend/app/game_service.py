@@ -26,9 +26,12 @@ from backend.app.engine.evaluator import (
 from backend.app.engine.resignation import should_engine_resign
 from backend.app.engine.move_selector import (
     CandidateMove,
+    filter_blunders,
     rank_candidates_for_side,
+    select_candidate_for_side,
 )
 from backend.app.difficulty import DifficultyConfig
+from backend.app.katago.client import KataGoMoveInfo
 from backend.app.presets.loader import (
     PresetLoadError,
     get_preset_by_id,
@@ -72,7 +75,7 @@ class KataGoAnalyzer(Protocol):
         board_size: int,
         max_visits: int,
         komi: float = 7.5,
-    ) -> list[str]: ...
+    ) -> list[KataGoMoveInfo]: ...
 
     def analyze_position(
         self,
@@ -89,8 +92,6 @@ class KataGoAnalyzer(Protocol):
 
 class RandomSource(Protocol):
     def random(self) -> float: ...
-
-    def choice(self, values: Sequence[CandidateMove]) -> CandidateMove: ...
 
 
 @dataclass(slots=True)
@@ -217,6 +218,15 @@ class InMemoryGameService:
         game.next_to_move = game.engine_side
         return game
 
+    def apply_human_resign(self, *, game_id: str) -> GameState:
+        game = self.get_game(game_id)
+        if game.status == "finished":
+            raise GameServiceError("game is already finished")
+        game.status = "finished"
+        game.winner = game.engine_side
+        game.next_to_move = game.engine_side
+        return game
+
     def apply_engine_move(self, *, game_id: str) -> EngineMoveResult:
         game = self.get_game(game_id)
         if game.status == "finished":
@@ -232,9 +242,18 @@ class InMemoryGameService:
             return self._engine_resign(game, evaluation=position)
 
         candidates = self._ranked_candidates(game)
-        ranked = rank_candidates_for_side(candidates, engine_side=game.engine_side)
+        ranked = rank_candidates_for_side(
+            candidates,
+            engine_side=game.engine_side,
+            difficulty=game.difficulty,
+        )
         ranked_shortlist = ranked[: min(self._game_top_n(game), len(ranked))]
         selected = self._select_engine_move(ranked_shortlist, game=game)
+        filtered_shortlist = filter_blunders(
+            ranked_shortlist,
+            engine_side=game.engine_side,
+            difficulty=game.difficulty,
+        )
         self._play_move(game, move=selected.move, side=game.engine_side)
         game.next_to_move = game.human_side
         return EngineMoveResult(
@@ -245,7 +264,7 @@ class InMemoryGameService:
                 unresolved_count=selected.survival_score,
                 min_black_probability=selected.min_black_probability,
             ),
-            candidates=ranked_shortlist,
+            candidates=filtered_shortlist,
         )
 
     def analyze_game(self, *, game_id: str) -> SurvivalEvaluation:
@@ -299,20 +318,22 @@ class InMemoryGameService:
         candidate_moves = self._fetch_engine_candidate_moves(game, initial_stones=initial_stones)
 
         candidates: list[CandidateMove] = []
-        for move in candidate_moves:
-            if not self._is_legal_candidate_move(game, move=move, side=side):
+        for move_info in candidate_moves:
+            if not self._is_legal_candidate_move(game, move=move_info.move, side=side):
                 continue
             evaluation = self._evaluate_engine_candidate(
                 game,
-                move=move,
+                move=move_info.move,
                 side=side,
                 initial_stones=initial_stones,
             )
             candidates.append(
                 CandidateMove(
-                    move=move,
+                    move=move_info.move,
                     survival_score=evaluation.survival_score,
                     min_black_probability=evaluation.metrics.min_black_probability,
+                    policy=move_info.policy,
+                    score_lead=move_info.score_lead,
                 )
             )
 
@@ -322,7 +343,7 @@ class InMemoryGameService:
 
     def _fetch_engine_candidate_moves(
         self, game: GameState, *, initial_stones: Sequence[tuple[StoneColor, str]]
-    ) -> list[str]:
+    ) -> list[KataGoMoveInfo]:
         try:
             moves = self._katago_for_game().get_candidate_moves(
                 query_id=f"engine-candidates-{game.game_id}",
@@ -389,22 +410,22 @@ class InMemoryGameService:
     def _select_engine_move(
         self, ranked: list[CandidateMove], *, game: GameState
     ) -> CandidateMove:
-        if not ranked:
-            raise GameServiceError("no legal engine moves available")
-        if len(ranked) == 1:
-            return ranked[0]
-        randomness = game.difficulty.randomness
-        if randomness <= 0.0:
-            return ranked[0]
-        if self._random_source.random() >= randomness:
-            return ranked[0]
-        return self._random_source.choice(ranked[1:])
+        try:
+            return select_candidate_for_side(
+                ranked,
+                engine_side=game.engine_side,
+                difficulty=game.difficulty,
+                random_source=self._random_source,
+            )
+        except ValueError as exc:
+            raise GameServiceError("no legal engine moves available") from exc
 
     def _default_difficulty(self) -> DifficultyConfig:
         return DifficultyConfig(
             max_visits=self._katago_max_visits,
             top_n=self._katago_top_n,
             randomness=0.0,
+            temperature=0.0,
         )
 
     def _board_as_initial_stones(self, board: boards.Board) -> list[tuple[StoneColor, str]]:

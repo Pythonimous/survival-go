@@ -180,6 +180,21 @@ def _register_human_move_route(
         return MoveResponse(**state_payload.model_dump(), move=payload.move)
 
 
+def _register_human_resign_route(
+    application: FastAPI, game_service: InMemoryGameService
+) -> None:
+    @application.post("/api/games/{game_id}/resign", response_model=GameStateResponse)
+    def apply_human_resign(game_id: str) -> GameStateResponse:
+        try:
+            game = game_service.apply_human_resign(game_id=game_id)
+        except GameNotFoundError as exc:
+            raise _not_found(str(exc)) from exc
+        except GameServiceError as exc:
+            raise _bad_request(str(exc)) from exc
+
+        return _to_game_state_payload(game)
+
+
 def _register_engine_move_route(
     application: FastAPI, game_service: InMemoryGameService
 ) -> None:
@@ -241,6 +256,7 @@ def _register_routes(application: FastAPI, game_service: InMemoryGameService) ->
     _register_get_game_route(application, game_service)
     _register_delete_game_route(application, game_service)
     _register_human_move_route(application, game_service)
+    _register_human_resign_route(application, game_service)
     _register_engine_move_route(application, game_service)
     _register_analyze_route(application, game_service)
 

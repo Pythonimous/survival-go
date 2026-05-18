@@ -63,6 +63,7 @@ This repository is licensed under the [MIT License](LICENSE). **KataGo** (MIT), 
 - **Release checklist:** `docs/development/release-checklist.md`
 - **Docker Compose:** `docs/development/docker-compose.md`
 - **Shared KataGo engine (queueing, sessions):** `docs/development/shared-katago-engine.md`
+- **Survival difficulty model (old vs new + glossary):** `docs/development/survival-difficulty-model.md`
 - **KataGo (WSL / Linux):** `docs/development/katago-wsl-linux.md`
 - Development workflow: `.github/instructions/development.instructions.md`
 - Testing workflow: `.github/instructions/testing.instructions.md`
