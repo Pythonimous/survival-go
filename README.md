@@ -1,6 +1,8 @@
 # survival-go
 
-Local-first web prototype for a Go training variant built around **total board ownership**. Black aims to own every point on the board; White aims to keep at least one point from full Black control. The app wraps [KataGo](https://github.com/lightvector/KataGo) in analysis mode, extracts ownership estimates, and reranks moves with a custom Survival Go evaluator—no new neural network in the first version.
+Local-first web prototype for a Go training variant built around **total board ownership**. Black aims to own every point on the board; White aims to keep at least one point from full Black control. The app wraps [KataGo](https://github.com/lightvector/KataGo) in analysis mode, extracts ownership estimates, and reranks moves with a custom Survival Go evaluator.
+
+The objective shaping is intentionally simple and directional: evaluate each candidate move by the board's weakest ownership point for Black (`min p_black`). If the engine is playing Black, it picks moves that raise that floor (fix the weakest point first); if it is playing White, it picks moves that lower the same floor (make Black's weakest point even weaker). This reframes move choice around a single bottleneck metric, which lets the project repurpose a strong general model for Survival Go behavior without retraining.
 
 **Audience:** Go players who want to practice killing and living with invasions when they do not have a practice partner.
 
@@ -38,7 +40,11 @@ White wins if White can prevent Black from achieving 100% board ownership.
 
 KataGo supplies normal-Go understanding and ownership predictions; the Survival evaluator reinterprets them for this asymmetric objective. The first milestone is a local web app where a human plays either side against the engine.
 
-The objective shaping is intentionally simple and directional: evaluate each candidate move by the board's weakest ownership point for Black (`min p_black`). If the engine is playing Black, it picks moves that raise that floor (fix the weakest point first); if it is playing White, it picks moves that lower the same floor (make Black's weakest point even weaker). This reframes move choice around a single bottleneck metric, which lets the project repurpose a strong general model for Survival Go behavior without retraining.
+## Go in 30 Seconds
+
+In regular Go, players place black and white stones to surround empty areas ("territory") and to capture groups with no liberties (adjacent empty points). You usually win by having more total controlled points than your opponent, not by controlling every point on the board.
+
+Survival Go changes that win condition. Black's target is absolute control (all 361 points on a 19x19 board), while White only needs to keep a single point from becoming Black-owned. That makes this project more like bottleneck defense/attack than standard score maximization: Black closes the last weak gaps, White keeps at least one gap alive.
 
 ## License
 
