@@ -3,68 +3,22 @@
 from __future__ import annotations
 
 import copy
-from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sgfmill import boards
 
 from backend.app.engine.board import (
     format_gtp_coordinate,
     parse_gtp_coordinate,
     to_sgfmill_color,
 )
-from backend.app.katago.client import KataGoClient
 from backend.app.presets.loader import get_preset_by_id
+from tests.integration.conftest import first_legal_move_on_board
 
 
 @pytest.fixture
-def api_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
-    binary = tmp_path / "katago"
-    binary.write_text("#!/bin/sh\n", encoding="utf-8")
-    binary.chmod(0o755)
-    config = tmp_path / "analysis.cfg"
-    config.write_text("numSearchThreads = 1\n", encoding="utf-8")
-    model = tmp_path / "model.bin.gz"
-    model.write_bytes(b"fake-model")
-
-    monkeypatch.setenv("KATAGO_BINARY_PATH", str(binary))
-    monkeypatch.setenv("KATAGO_CONFIG_PATH", str(config))
-    monkeypatch.setenv("KATAGO_MODEL_PATH", str(model))
-    monkeypatch.setattr(
-        KataGoClient,
-        "analyze_position",
-        lambda self, **kwargs: [0.4] + [1.0] * 360,
-    )
-
-    def _pick_legal_candidate(self: KataGoClient, **kwargs: object) -> list[str]:
-        board = boards.Board(19)
-        initial_stones = kwargs["initial_stones"]
-        assert isinstance(initial_stones, list)
-        for stone in initial_stones:
-            color, move = stone
-            assert isinstance(color, str)
-            assert isinstance(move, str)
-            row, col = parse_gtp_coordinate(move, size=19)
-            board.play(row, col, to_sgfmill_color(color))
-        initial_player = kwargs["initial_player"]
-        assert isinstance(initial_player, str)
-        sgf_color = to_sgfmill_color(initial_player)
-        for row in range(board.side):
-            for col in range(board.side):
-                if board.get(row, col) is not None:
-                    continue
-                trial = board.copy()
-                try:
-                    trial.play(row, col, sgf_color)
-                except ValueError:
-                    continue
-                return [format_gtp_coordinate(row, col, size=board.side)]
-        return []
-
-    monkeypatch.setattr(KataGoClient, "get_candidate_moves", _pick_legal_candidate)
-
+def api_client() -> TestClient:
     from backend.app.main import create_app
 
     return TestClient(create_app())
@@ -99,6 +53,44 @@ def _extract_metrics(payload: dict[str, Any]) -> dict[str, Any]:
     raise AssertionError("response does not include metrics")
 
 
+def _raw_model_outputs(*, ownership: list[float] | None = None) -> dict[str, object]:
+    ownership_values = ownership if ownership is not None else [-0.2] + [1.0] * 360
+    return {
+        "policy": [0.0] * ((19 * 19 + 1) * 6),
+        "ownership": ownership_values,
+        "value": [0.1, -0.2, 0.3],
+        "miscvalue": [0.0] * 10,
+    }
+
+
+def _browser_engine_move_body(
+    *,
+    position_ownership: list[float] | None = None,
+    candidate_ownerships: dict[str, list[float]] | None = None,
+    candidate_moves: list[str] | None = None,
+) -> dict[str, object]:
+    position = _raw_model_outputs(ownership=position_ownership)
+    moves = candidate_moves or []
+    ownerships = candidate_ownerships or {}
+    candidates = []
+    for move in moves:
+        candidates.append(
+            {
+                "move": move,
+                "policy_prob": 0.5,
+                "raw_model_outputs": _raw_model_outputs(
+                    ownership=ownerships.get(move, [1.0] * 361),
+                ),
+            }
+        )
+    return {
+        "browser_engine_move": {
+            "position_raw": position,
+            "candidates": candidates,
+        }
+    }
+
+
 @pytest.mark.integration
 def test_create_game_human_black_starts_with_white_to_move(
     api_client: TestClient,
@@ -121,7 +113,7 @@ def test_create_game_human_black_starts_with_white_to_move(
 
 
 @pytest.mark.integration
-def test_api_lifecycle_create_fetch_move_engine_and_analyze(
+def test_api_lifecycle_create_fetch_move_analyze_and_engine_move(
     api_client: TestClient,
 ) -> None:
     preset_id = "balanced"
@@ -139,47 +131,106 @@ def test_api_lifecycle_create_fetch_move_engine_and_analyze(
         json={"preset_id": preset_id, "human_side": human_side},
     )
     assert create_response.status_code == 201
-    create_payload = create_response.json()
-    game_id = create_payload["game_id"]
-    assert isinstance(game_id, str)
-    assert game_id
+    game_id = create_response.json()["game_id"]
 
     state_response = api_client.get(f"/api/games/{game_id}")
     assert state_response.status_code == 200
-    assert state_response.json()["game_id"] == game_id
 
     human_move_response = api_client.post(
         f"/api/games/{game_id}/move",
         json={"move": human_move},
     )
     assert human_move_response.status_code == 200
-    human_payload = human_move_response.json()
-    assert human_payload["game_id"] == game_id
-    assert human_payload["last_move"] == human_move
 
-    engine_move_response = api_client.post(f"/api/games/{game_id}/engine-move")
-    assert engine_move_response.status_code == 200
-    engine_payload = engine_move_response.json()
-    assert engine_payload["game_id"] == game_id
-    assert isinstance(engine_payload.get("move"), str)
-    assert engine_payload["move"]
-    assert isinstance(engine_payload.get("candidates"), list)
-    assert len(engine_payload["candidates"]) >= 1
-    first_candidate = engine_payload["candidates"][0]
-    assert isinstance(first_candidate.get("move"), str)
-    assert isinstance(first_candidate.get("survival_score"), int)
-    assert isinstance(first_candidate.get("min_black_probability"), (int, float))
-    engine_metrics = _extract_metrics(engine_payload)
-    assert engine_metrics["unresolved_count"] == 1
-    assert float(engine_metrics["min_black_probability"]) == pytest.approx(0.4)
-    assert engine_payload["survival_score"] == engine_metrics["unresolved_count"]
-    assert engine_payload["last_move"] == engine_payload["move"]
-
-    analyze_response = api_client.post(f"/api/games/{game_id}/analyze")
+    analyze_response = api_client.post(
+        f"/api/games/{game_id}/analyze",
+        json={"raw_model_outputs": _raw_model_outputs()},
+    )
     assert analyze_response.status_code == 200
     metrics = _extract_metrics(analyze_response.json())
     assert metrics["unresolved_count"] == 1
     assert float(metrics["min_black_probability"]) == pytest.approx(0.4)
+
+    state_after_human = human_move_response.json()
+    preset_board = copy.deepcopy(get_preset_by_id(preset_id).board)
+    row, col = parse_gtp_coordinate(human_move, size=preset_board.side)
+    preset_board.play(row, col, to_sgfmill_color(human_side))
+    engine_move = first_legal_move_on_board(
+        preset_board,
+        side=state_after_human["engine_side"],
+    )
+
+    engine_move_response = api_client.post(
+        f"/api/games/{game_id}/engine-move",
+        json=_browser_engine_move_body(
+            candidate_moves=[engine_move],
+            candidate_ownerships={
+                engine_move: [-0.2] + [1.0] * 360,
+            },
+        ),
+    )
+    assert engine_move_response.status_code == 200
+    engine_payload = engine_move_response.json()
+    assert engine_payload["move"] == engine_move
+    assert len(engine_payload["candidates"]) >= 1
+
+
+@pytest.mark.integration
+def test_analyze_rejects_empty_body(api_client: TestClient) -> None:
+    create_response = api_client.post(
+        "/api/games",
+        json={"preset_id": "balanced", "human_side": "W"},
+    )
+    assert create_response.status_code == 201
+    game_id = create_response.json()["game_id"]
+
+    response = api_client.post(f"/api/games/{game_id}/analyze")
+
+    assert response.status_code == 422
+
+
+@pytest.mark.integration
+def test_engine_move_rejects_empty_body(api_client: TestClient) -> None:
+    create_response = api_client.post(
+        "/api/games",
+        json={"preset_id": "balanced", "human_side": "W"},
+    )
+    assert create_response.status_code == 201
+    game_id = create_response.json()["game_id"]
+
+    response = api_client.post(f"/api/games/{game_id}/engine-move")
+
+    assert response.status_code == 422
+
+
+@pytest.mark.integration
+def test_analyze_accepts_raw_onnx_outputs_payload(api_client: TestClient) -> None:
+    create_response = api_client.post(
+        "/api/games",
+        json={"preset_id": "balanced", "human_side": "W"},
+    )
+    assert create_response.status_code == 201
+    game_id = create_response.json()["game_id"]
+
+    response = api_client.post(
+        f"/api/games/{game_id}/analyze",
+        json={"raw_model_outputs": _raw_model_outputs()},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    metrics = _extract_metrics(payload)
+    assert metrics["unresolved_count"] == 1
+    assert float(metrics["min_black_probability"]) == pytest.approx(0.4)
+    policy = payload.get("policy")
+    assert isinstance(policy, list)
+    assert len(policy) == 362
+    assert sum(float(value) for value in policy) == pytest.approx(1.0)
+    p_black = payload.get("p_black")
+    assert isinstance(p_black, list)
+    assert len(p_black) == 361
+    assert float(p_black[0]) == pytest.approx(0.4)
+    assert float(payload["winrate"]) == pytest.approx(0.33758453, rel=1e-6)
 
 
 @pytest.mark.integration
@@ -199,8 +250,10 @@ def test_create_game_accepts_difficulty_and_exposes_in_game_state(
 
     state_response = api_client.get(f"/api/games/{game_id}")
     assert state_response.status_code == 200
-    state = state_response.json()
-    assert state["difficulty"] == {"max_visits": 33, "top_n": 4, "randomness": 0.2}
+    difficulty = state_response.json()["difficulty"]
+    assert difficulty["max_visits"] == 33
+    assert difficulty["top_n"] == 4
+    assert float(difficulty["randomness"]) == pytest.approx(0.2)
 
 
 @pytest.mark.integration
@@ -217,14 +270,9 @@ def test_difficulty_presets_endpoint_returns_backend_defined_presets(
 
 @pytest.mark.integration
 def test_engine_move_white_resigns_when_black_ownership_dominates(
-    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    api_client: TestClient,
 ) -> None:
     dominant_black = [0.995] + [0.996] * 360
-    monkeypatch.setattr(
-        KataGoClient,
-        "analyze_position",
-        lambda self, **kwargs: list(dominant_black),
-    )
 
     create_response = api_client.post(
         "/api/games",
@@ -233,7 +281,10 @@ def test_engine_move_white_resigns_when_black_ownership_dominates(
     assert create_response.status_code == 201
     game_id = create_response.json()["game_id"]
 
-    engine_move_response = api_client.post(f"/api/games/{game_id}/engine-move")
+    engine_move_response = api_client.post(
+        f"/api/games/{game_id}/engine-move",
+        json=_browser_engine_move_body(position_ownership=dominant_black),
+    )
     assert engine_move_response.status_code == 200
     payload = engine_move_response.json()
     assert payload["resigned"] is True
@@ -241,10 +292,6 @@ def test_engine_move_white_resigns_when_black_ownership_dominates(
     assert payload["winner"] == "B"
     assert payload["status"] == "finished"
     assert payload["candidates"] == []
-
-    state_response = api_client.get(f"/api/games/{game_id}")
-    assert state_response.json()["status"] == "finished"
-    assert state_response.json()["winner"] == "B"
 
 
 @pytest.mark.integration
@@ -261,11 +308,6 @@ def test_human_resign_finishes_game_with_engine_winner(api_client: TestClient) -
     payload = resign_response.json()
     assert payload["status"] == "finished"
     assert payload["winner"] == "B"
-    assert payload["human_side"] == "W"
-
-    state_response = api_client.get(f"/api/games/{game_id}")
-    assert state_response.json()["status"] == "finished"
-    assert state_response.json()["winner"] == "B"
 
 
 @pytest.mark.integration

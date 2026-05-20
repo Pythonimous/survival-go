@@ -9,7 +9,7 @@ FRONTEND_DOC = PROJECT_ROOT / "docs" / "development" / "cloud-frontend-static.md
 TOPOLOGY_DOC = PROJECT_ROOT / "docs" / "development" / "cloud-aws-ecs-topology.md"
 BUILD_SCRIPT = PROJECT_ROOT / "scripts" / "build_frontend.sh"
 PUBLISH_SCRIPT = PROJECT_ROOT / "scripts" / "publish_frontend_s3.sh"
-API_MODULE = PROJECT_ROOT / "frontend" / "src" / "lib" / "api.ts"
+API_MODULE = PROJECT_ROOT / "frontend" / "src" / "lib" / "api" / "client.ts"
 ENV_PRODUCTION_EXAMPLE = PROJECT_ROOT / "frontend" / ".env.production.example"
 README = PROJECT_ROOT / "README.md"
 
@@ -51,7 +51,7 @@ def test_publish_frontend_script_syncs_dist_to_s3() -> None:
 
 @pytest.mark.unit
 def test_api_module_exports_api_url_helper() -> None:
-    assert API_MODULE.is_file(), "frontend/src/lib/api.ts is missing"
+    assert API_MODULE.is_file(), "frontend/src/lib/api/client.ts is missing"
     text = API_MODULE.read_text(encoding="utf-8")
     assert "VITE_API_BASE_URL" in text
     assert "export function apiUrl" in text

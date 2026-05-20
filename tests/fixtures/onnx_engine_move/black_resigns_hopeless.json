@@ -1,0 +1,26 @@
+{
+  "id": "black-resigns-hopeless",
+  "description": "Black engine resigns when root min_black_probability is below 1%.",
+  "game": {
+    "presetId": "balanced",
+    "humanSide": "W"
+  },
+  "difficulty": {
+    "maxVisits": 20,
+    "topN": 2,
+    "randomness": 0,
+    "variantAwareness": 1,
+    "temperature": 0,
+    "blunderMargin": 1
+  },
+  "positionRaw": {
+    "ownershipProfile": {
+      "kind": "hopeless_black",
+      "min_black": 0.005
+    }
+  },
+  "policyCandidates": [],
+  "expected": {
+    "resigned": true
+  }
+}

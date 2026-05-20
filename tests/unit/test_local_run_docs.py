@@ -16,8 +16,8 @@ def test_local_run_doc_exists_and_covers_run_path() -> None:
     required = (
         "scripts/run_backend.sh",
         "scripts/run_frontend.sh",
-        "./scripts/setup_katago.sh",
-        "katago-wsl-linux.md",
+        "browser-inference-design.md",
+        "onnx-model-artifacts.md",
         "GET /health",
         "http://127.0.0.1:8000/health",
         "http://127.0.0.1:5173",
@@ -28,6 +28,7 @@ def test_local_run_doc_exists_and_covers_run_path() -> None:
     )
     for needle in required:
         assert needle in text, f"missing {needle!r} in local-run.md"
+    assert "setup_katago.sh" not in text
 
 
 @pytest.mark.unit

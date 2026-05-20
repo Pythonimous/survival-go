@@ -3,6 +3,27 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
+import {
+  reportOnnxModelDownloadStarted,
+  reportOnnxModelReady,
+  resetOnnxModelLoadSnapshotForTests,
+} from "@/lib/analysis/runtime/loadProgress";
+import { clearUserSelectedOnnxModelVariant } from "@/lib/analysis/runtime/modelVariant";
+
+const { loadOnnxModelVariantMock } = vi.hoisted(() => ({
+  loadOnnxModelVariantMock: vi.fn(),
+}));
+
+vi.mock("@/lib/analysis/runtime/modelLoader", () => ({
+  warmupOnnxModelSession: vi.fn(async () => undefined),
+  resetOnnxWarmupForTests: vi.fn(),
+  loadOnnxModelVariant: loadOnnxModelVariantMock,
+}));
+
+loadOnnxModelVariantMock.mockImplementation(async (variant: "fp32" | "fp16" | "uint8") => {
+  reportOnnxModelDownloadStarted(`/models/kaya.${variant}.onnx`, variant);
+  reportOnnxModelReady(`/models/kaya.${variant}.onnx`, variant);
+});
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -11,50 +32,70 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-describe("App", () => {
-  const fetchMock = vi.fn<typeof fetch>();
+function mockPresetsResponses(): void {
+  fetchMock.mockResolvedValueOnce(
+    jsonResponse([
+      {
+        id: "balanced",
+        name: "Balanced",
+        board_size: 19,
+        initial_player_to_move: "W",
+      },
+    ]),
+  );
+  fetchMock.mockResolvedValueOnce(
+    jsonResponse([
+      {
+        id: "normal",
+        name: "Normal",
+        description: "Balanced baseline",
+        config: {
+          max_visits: 20,
+          top_n: 4,
+          randomness: 0.35,
+          variant_awareness: 0.6,
+          policy_anchor: 0.45,
+          score_anchor: 0.1,
+          temperature: 0.35,
+          blunder_margin: 0.04,
+          global_weight: 1.0,
+          local_weight: 0.0,
+        },
+      },
+    ]),
+  );
+}
 
+async function pickFp16Model(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole("button", { name: /half precision \(fp16/i }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /start game/i })).not.toBeDisabled(),
+  );
+}
+
+const fetchMock = vi.fn<typeof fetch>();
+
+describe("App", () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    loadOnnxModelVariantMock.mockClear();
+    loadOnnxModelVariantMock.mockImplementation(async (variant: "fp32" | "fp16" | "uint8") => {
+      reportOnnxModelDownloadStarted(`/models/kaya.${variant}.onnx`, variant);
+      reportOnnxModelReady(`/models/kaya.${variant}.onnx`, variant);
+    });
+    resetOnnxModelLoadSnapshotForTests();
+    clearUserSelectedOnnxModelVariant();
     vi.stubGlobal("fetch", fetchMock);
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    resetOnnxModelLoadSnapshotForTests();
+    clearUserSelectedOnnxModelVariant();
   });
 
   it("loads presets from GET /api/presets on startup", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse([
-        {
-          id: "balanced",
-          name: "Balanced",
-          board_size: 19,
-          initial_player_to_move: "W",
-        },
-      ]),
-    );
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse([
-        {
-          id: "normal",
-          name: "Normal",
-          description: "Balanced baseline",
-          config: {
-            max_visits: 20,
-            top_n: 4,
-            randomness: 0.35,
-            variant_awareness: 0.6,
-            policy_anchor: 0.45,
-            score_anchor: 0.1,
-            temperature: 0.35,
-            blunder_margin: 0.04,
-            global_weight: 1.0,
-            local_weight: 0.0,
-          },
-        },
-      ]),
-    );
+    mockPresetsResponses();
 
     render(<App />);
 
@@ -63,40 +104,30 @@ describe("App", () => {
     expect(await screen.findByRole("radio", { name: /^balanced$/i })).toBeInTheDocument();
   });
 
-  it("posts game setup to /api/games when start is clicked", async () => {
+  it("disables Start game until the user picks and loads a model", async () => {
     const user = userEvent.setup();
+    mockPresetsResponses();
+
+    render(<App />);
+    await screen.findByRole("radio", { name: /^balanced$/i });
+
+    const startButton = screen.getByRole("button", { name: /start game/i });
+    expect(startButton).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /half precision \(fp16/i }));
+
+    await waitFor(() => expect(loadOnnxModelVariantMock).toHaveBeenCalledWith("fp16"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /start game/i })).not.toBeDisabled(),
+    );
+    const picker = screen.getByRole("region", { name: /model picker/i });
+    expect(picker).toHaveTextContent(/fp16 model ready/i);
+  });
+
+  it("posts game setup to /api/games when start is clicked after picking a model", async () => {
+    const user = userEvent.setup();
+    mockPresetsResponses();
     fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse([
-          {
-            id: "balanced",
-            name: "Balanced",
-            board_size: 19,
-            initial_player_to_move: "W",
-          },
-        ]),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse([
-          {
-            id: "normal",
-            name: "Normal",
-            description: "Balanced baseline",
-            config: {
-              max_visits: 20,
-              top_n: 4,
-              randomness: 0.35,
-              variant_awareness: 0.6,
-              policy_anchor: 0.45,
-              score_anchor: 0.1,
-              temperature: 0.35,
-              blunder_margin: 0.04,
-              global_weight: 1.0,
-              local_weight: 0.0,
-            },
-          },
-        ]),
-      )
       .mockResolvedValueOnce(jsonResponse({ game_id: "game-1" }, 201))
       .mockResolvedValueOnce(
         jsonResponse({
@@ -117,6 +148,7 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByRole("radio", { name: /^balanced$/i });
+    await pickFp16Model(user);
     await user.click(screen.getByRole("button", { name: /start game/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
@@ -150,37 +182,7 @@ describe("App", () => {
   });
 
   it("shows a footer link to the GitHub repository", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse([
-        {
-          id: "balanced",
-          name: "Balanced",
-          board_size: 19,
-          initial_player_to_move: "W",
-        },
-      ]),
-    );
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse([
-        {
-          id: "normal",
-          name: "Normal",
-          description: "Balanced baseline",
-          config: {
-            max_visits: 20,
-            top_n: 4,
-            randomness: 0.35,
-            variant_awareness: 0.6,
-            policy_anchor: 0.45,
-            score_anchor: 0.1,
-            temperature: 0.35,
-            blunder_margin: 0.04,
-            global_weight: 1.0,
-            local_weight: 0.0,
-          },
-        },
-      ]),
-    );
+    mockPresetsResponses();
 
     render(<App />);
 
@@ -192,38 +194,8 @@ describe("App", () => {
 
   it("returns to setup when New game is clicked", async () => {
     const user = userEvent.setup();
+    mockPresetsResponses();
     fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse([
-          {
-            id: "balanced",
-            name: "Balanced",
-            board_size: 19,
-            initial_player_to_move: "W",
-          },
-        ]),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse([
-          {
-            id: "normal",
-            name: "Normal",
-            description: "Balanced baseline",
-            config: {
-              max_visits: 20,
-              top_n: 4,
-              randomness: 0.35,
-              variant_awareness: 0.6,
-              policy_anchor: 0.45,
-              score_anchor: 0.1,
-              temperature: 0.35,
-              blunder_margin: 0.04,
-              global_weight: 1.0,
-              local_weight: 0.0,
-            },
-          },
-        ]),
-      )
       .mockResolvedValueOnce(jsonResponse({ game_id: "game-1" }, 201))
       .mockResolvedValueOnce(
         jsonResponse({
@@ -244,6 +216,7 @@ describe("App", () => {
 
     render(<App />);
     await screen.findByRole("radio", { name: /^balanced$/i });
+    await pickFp16Model(user);
     await user.click(screen.getByRole("button", { name: /start game/i }));
     await screen.findByRole("button", { name: /new game/i });
 

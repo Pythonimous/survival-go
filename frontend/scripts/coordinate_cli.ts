@@ -11,8 +11,8 @@ import {
   signMapFromStones,
   vertexToGtp,
   vertexToSgfmill,
-} from "../src/lib/coordinates.ts";
-import type { ApiStone, Vertex } from "../src/lib/coordinates.ts";
+} from "../src/lib/go/coordinates";
+import type { ApiStone, Vertex } from "../src/lib/go/coordinates";
 
 const handlers: Record<string, (...args: never[]) => unknown> = {
   parseGtpCoordinate: (coordinate: string, size = 19) => parseGtpCoordinate(coordinate, size),

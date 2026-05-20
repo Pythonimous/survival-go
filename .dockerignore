@@ -18,8 +18,3 @@ htmlcov/
 !.env.docker.example
 test-results/
 playwright-report/
-analysis_logs/
-third_party/katago/katago
-third_party/katago/*.zip
-third_party/katago/*.bin.gz
-third_party/katago/analysis_logs/

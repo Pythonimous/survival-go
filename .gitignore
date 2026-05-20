@@ -82,14 +82,21 @@ Thumbs.db
 # Local data
 /data/*.db
 
-# Local secrets and KataGo artifacts (large downloads)
+# Local secrets
 .env
-third_party/katago/katago
-third_party/katago/*.zip
-third_party/katago/*.bin.gz
-third_party/katago/analysis_logs/
-analysis_logs/
 
 # Node
 node_modules/
 frontend/dist/
+
+# ONNX Runtime Web binaries (copied by frontend/scripts/copy-ort-wasm.mjs)
+frontend/public/wasm/*.wasm
+frontend/public/wasm/*.mjs
+
+# Cross-Origin Isolation service worker (copied from node_modules by
+# frontend/scripts/copy-coi-serviceworker.mjs; see docs/development/local-run.md).
+frontend/public/coi-serviceworker.js
+
+# ONNX model artifacts (local self-hosted mirror; default build fetches from
+# Hugging Face directly, see docs/development/onnx-model-artifacts.md).
+frontend/public/models/kaya

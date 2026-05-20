@@ -1,18 +1,45 @@
 # Third-party notices
 
-Survival Go is licensed under the MIT License (see [LICENSE](LICENSE)). The application also depends on and/or distributes components from other projects. This file summarizes required attribution and where to find full license text.
+Survival Go is licensed under the GNU Affero General Public License v3.0 or later (see [LICENSE](LICENSE)). The application also depends on, ports, and/or distributes components from other projects. This file summarizes required attribution and where to find full license text.
 
-## KataGo (engine)
+## Kaya AI engine (ported ONNX inference and MCTS modules)
+
+- **Project:** [kaya-go/kaya](https://github.com/kaya-go/kaya)
+- **License:** GNU Affero General Public License v3.0 (see upstream [LICENSE](https://github.com/kaya-go/kaya/blob/main/LICENSE))
+- **Pinned upstream commit for porting:** [`8fafeac0fedde020c447d931c0b1afdf283edf2a`](https://github.com/kaya-go/kaya/commit/8fafeac0fedde020c447d931c0b1afdf283edf2a)
+- **How we use it:** Survival Go is adopting Kaya's browser ONNX engine stack, including batched inference, MCTS, GPU/session helpers, and analysis queue behavior. Ported source files must keep SPDX and upstream attribution headers.
+
+Planned/ported files from `packages/ai-engine/src/` at the pinned commit:
+
+| Survival Go file | Upstream path |
+|------------------|---------------|
+| `onnx-session.ts` | `packages/ai-engine/src/onnx-session.ts` |
+| `onnx-engine.ts` | `packages/ai-engine/src/onnx-engine.ts` |
+| `onnx-mcts.ts` | `packages/ai-engine/src/onnx-mcts.ts` |
+| `onnx-utils.ts` | `packages/ai-engine/src/onnx-utils.ts` |
+| `onnx-gpu.ts` | `packages/ai-engine/src/onnx-gpu.ts` |
+| `onnx-featurization.ts` | `packages/ai-engine/src/onnx-featurization.ts` |
+| `onnx-types.ts` | `packages/ai-engine/src/onnx-types.ts` |
+| `queue.ts` | `packages/ai-engine/src/queue.ts` |
+| `auto-config.ts` | `packages/ai-engine/src/auto-config.ts` |
+| `base-engine.ts` | `packages/ai-engine/src/base-engine.ts` |
+| `types.ts` | `packages/ai-engine/src/types.ts` |
+| `analysis-utils.ts` | `packages/ai-engine/src/analysis-utils.ts` |
+| `analysis-utils.test.ts` | `packages/ai-engine/tests/analysis-utils.test.ts` |
+
+Supporting local board adapter files ported from `packages/goboard/src/` at the pinned commit:
+
+| Survival Go file | Upstream path |
+|------------------|---------------|
+| `goboard/index.ts` | `packages/goboard/src/index.ts` |
+| `goboard/types.ts` | `packages/goboard/src/types.ts` |
+| `goboard/handicap.ts` | `packages/goboard/src/handicap.ts` |
+
+## KataGo (feature layout / ONNX export family)
 
 - **Project:** [lightvector/KataGo](https://github.com/lightvector/KataGo)
-- **License:** MIT License (Copyright David J. Wu and other contributors; see upstream [LICENSE](https://github.com/lightvector/KataGo/blob/master/LICENSE))
-- **How we use it:** The backend runs the `katago analysis` subprocess for ownership and candidate moves. The binary and neural net are **not** committed to this repository; they are downloaded at setup or image build time via [`scripts/setup_katago.sh`](scripts/setup_katago.sh) (default: KataGo **v1.16.4** release build).
-- **Config files:** Files under [`third_party/katago/`](third_party/katago/) (for example `analysis.cfg`, `analysis.docker.cfg`) are derived from or aligned with KataGo’s example configs and are used under the same upstream terms.
-- **Nested libraries:** Prebuilt KataGo binaries may bundle additional libraries (OpenCL, Eigen, etc.). See KataGo’s `cpp/external/` tree and upstream LICENSE for those components.
-
-### Neural network weights
-
-Weights (`.bin.gz` files) are downloaded separately (for example from [katagotraining.org](https://katagotraining.org/) or [KataGo releases](https://github.com/lightvector/KataGo/releases)). They are not part of Survival Go’s source code. Use them according to the terms stated by the model distributor.
+- **License:** MIT License (see upstream [LICENSE](https://github.com/lightvector/KataGo/blob/master/LICENSE))
+- **How we use it:** The browser ONNX encoder and tensor layout follow KataGo NN feature conventions. We do **not** ship or run the KataGo analysis binary in the backend.
 
 ## Python dependencies (runtime)
 
@@ -31,8 +58,19 @@ Full dependency versions are listed in [`requirements.txt`](requirements.txt). I
 |-----------|---------|------|
 | [React](https://github.com/facebook/react) | MIT | https://react.dev/ |
 | [@sabaki/shudan](https://github.com/Sabaki/shudan) | MIT | https://github.com/Sabaki/shudan |
+| [onnxruntime-web](https://github.com/microsoft/onnxruntime) | MIT | https://www.npmjs.com/package/onnxruntime-web |
 
 Full dependency versions and transitive licenses are recorded in [`frontend/package-lock.json`](frontend/package-lock.json). After `npm install`, run `npm ls` or inspect `node_modules/<package>/LICENSE` for complete text.
+
+## Browser ONNX model weights (Kaya / KataGo export family)
+
+The frontend loads static **ONNX neural network files** (for example `kaya.fp32.onnx` and `kaya.uint8.onnx` under `frontend/public/models/`, served as `/models/...`). These are **not** application source code; they are binary exports compatible with the KataGo feature layout consumed by this project’s encoder and backend raw-output mapping.
+
+- **Upstream weights and ONNX releases:** Public ONNX builds are distributed with the **[kaya-go/kaya](https://huggingface.co/kaya-go/kaya)** model collection on Hugging Face (KataGo checkpoints converted for web and cross-platform use). The Hugging Face model card states **MIT License** for the original KataGo neural network weights and for the ONNX conversion as published there; always confirm the license text on the **exact revision** you download.
+- **Conversion tooling:** The **[kaya-go/katago-onnx](https://github.com/kaya-go/katago-onnx)** repository documents the PyTorch-to-ONNX conversion workflow. That GitHub repository’s `README` states **AGPL-3.0** for the **converter source code** in that repo; Survival Go does not need to ship that tooling in production, only compatible `.onnx` artifacts obtained under terms you accept.
+- **Original network training:** See KataGo’s project and training data terms ([lightvector/KataGo](https://github.com/lightvector/KataGo), [katagotraining.org](https://katagotraining.org/)) as referenced on the Hugging Face model card.
+
+If you replace these files with weights from another channel, update this notice and your compliance review accordingly.
 
 ## Development and test tools
 

@@ -18,7 +18,7 @@ def test_cloud_topology_doc_exists_and_covers_mvp_aws_shape() -> None:
         "ECS",
         "Fargate",
         "single",
-        "KataGo",
+        "browser",
         "S3 + CloudFront",
         "Namecheap",
         "Secrets Manager",

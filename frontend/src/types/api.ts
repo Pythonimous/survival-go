@@ -33,6 +33,8 @@ export type GameState = {
   winner: StoneColor | null;
   difficulty?: DifficultyConfig;
   stones: ApiStone[];
+  /** Legal GTP moves for ``next_to_move`` (authoritative from backend rules). */
+  legal_moves?: string[];
 };
 
 export type DifficultyConfig = {

@@ -10,7 +10,7 @@ From the repo root:
    ```bash
    python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
    ```
-2. **KataGo** configured for integration tests (`.env` with `KATAGO_*` paths). See [katago-wsl-linux.md](katago-wsl-linux.md).
+2. **ONNX model artifacts** in `frontend/public/models/` for manual browser smoke. See [onnx-model-artifacts.md](onnx-model-artifacts.md).
 3. **Frontend dependencies** (only if you run browser E2E with a live UI stack):
    ```bash
    cd frontend && npm install && cd ..
@@ -41,7 +41,7 @@ make test-full
 | 1. Lint | `./scripts/run_tests.sh lint` | `pytest -m lint` (flake8 via pytest) |
 | 2. Types | `./scripts/run_tests.sh types` | `mypy .` |
 | 3. Unit | `./scripts/run_tests.sh unit` | `pytest -m unit` |
-| 4. Integration | `./scripts/run_tests.sh integration` | `pytest -m integration` (live KataGo when configured) |
+| 4. Integration | `./scripts/run_tests.sh integration` | `pytest -m integration` |
 | 5. E2E | `./scripts/run_tests.sh e2e` | `pytest -m e2e` via `./scripts/run_e2e_tests.sh` |
 
 CI runs the same commands in parallel jobs; locally, `full` / `release` runs them sequentially.
@@ -79,8 +79,8 @@ With backend and frontend running ([local-run.md](local-run.md)):
 | Check | How |
 |-------|-----|
 | API health | `curl -s http://127.0.0.1:8000/health` → `{"status":"ok",...}` |
-| KataGo path | `pytest tests/integration/test_katago_smoke.py -m integration -v` |
-| UI turn flow | Open http://127.0.0.1:5173 — preset, human move, engine response, metrics (UF-1–UF-3) |
+| API lifecycle | `pytest tests/integration/test_api_lifecycle.py -m integration -v` |
+| UI turn flow | Open http://127.0.0.1:5173 — preset, human move, browser ONNX engine response, metrics |
 
 ## Docker packaging smoke (optional)
 
@@ -105,7 +105,7 @@ See [docker-compose.md](docker-compose.md). Tear down with `docker compose down`
 
 | Failure | Likely cause |
 |---------|----------------|
-| Integration / KataGo smoke fails | Missing or wrong `KATAGO_*` in `.env`; see [katago-wsl-linux.md](katago-wsl-linux.md) |
+| Integration API tests fail | Backend not starting; check `curl http://127.0.0.1:8000/health` |
 | `mypy` errors | Fix reported paths before release; do not skip with `# type: ignore` unless justified |
 | Lint fails | Run `pytest -m lint -v` for file/line details |
 | E2E cannot reach API | Port 8000 in use or wrong `E2E_SERVER_COMMAND`; try `E2E_SERVER_DISABLED=true` if tests self-host |

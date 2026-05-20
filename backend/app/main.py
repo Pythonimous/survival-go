@@ -2,18 +2,24 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.app.config import get_settings
 from backend.app.difficulty import DifficultyConfig, DifficultyPreset, list_difficulty_presets
 from backend.app.engine.board import StoneColor
 from backend.app.game_service import (
+    BrowserEngineMoveCandidate,
     GameNotFoundError,
     GameState,
     GameServiceError,
     InMemoryGameService,
 )
-from backend.app.katago.client import KataGoClient
+
+SERVER_INFERENCE_REMOVED = (
+    "Server-side KataGo inference was removed. "
+    "Send browser ONNX payloads: raw_model_outputs for /analyze "
+    "and browser_engine_move for /engine-move."
+)
 
 
 class HealthResponse(BaseModel):
@@ -48,6 +54,7 @@ class GameStateResponse(BaseModel):
     winner: StoneColor | None = None
     difficulty: DifficultyConfig
     stones: list[dict[str, str]]
+    legal_moves: list[str]
 
 
 class MoveResponse(GameStateResponse):
@@ -71,10 +78,47 @@ class AnalyzeResponse(BaseModel):
     game_id: str
     metrics: dict[str, float | int]
     survival_score: int
+    policy: list[float] | None = None
+    p_black: list[float] | None = None
+    score_lead: float | None = None
+    winrate: float | None = None
 
 
-def _to_game_state_payload(game: GameState) -> GameStateResponse:
-    # Keep handlers thin: game serialization stays in one place.
+class RawModelOutputsRequest(BaseModel):
+    policy: list[float]
+    ownership: list[float]
+    value: list[float] | None = None
+    miscvalue: list[float] | None = None
+
+
+class AnalyzeRequest(BaseModel):
+    raw_model_outputs: RawModelOutputsRequest = Field(
+        ...,
+        description="Raw ONNX model outputs from browser inference.",
+    )
+
+
+class BrowserEngineMoveCandidateRequest(BaseModel):
+    move: str
+    policy_prob: float
+    raw_model_outputs: RawModelOutputsRequest
+
+
+class BrowserEngineMoveRequest(BaseModel):
+    position_raw: RawModelOutputsRequest
+    candidates: list[BrowserEngineMoveCandidateRequest]
+
+
+class EngineMoveRequest(BaseModel):
+    browser_engine_move: BrowserEngineMoveRequest = Field(
+        ...,
+        description="Browser ONNX engine-move payload (position + candidates).",
+    )
+
+
+def _to_game_state_payload(
+    game: GameState, game_service: InMemoryGameService
+) -> GameStateResponse:
     return GameStateResponse(
         game_id=game.game_id,
         preset_id=game.preset_id,
@@ -88,6 +132,7 @@ def _to_game_state_payload(game: GameState) -> GameStateResponse:
         winner=game.winner,
         difficulty=game.difficulty,
         stones=game.stones(),
+        legal_moves=game_service.legal_moves_for_side(game, side=game.next_to_move),
     )
 
 
@@ -149,7 +194,7 @@ def _register_get_game_route(application: FastAPI, game_service: InMemoryGameSer
             game = game_service.get_game(game_id)
         except GameNotFoundError as exc:
             raise _not_found(str(exc)) from exc
-        return _to_game_state_payload(game)
+        return _to_game_state_payload(game, game_service)
 
 
 def _register_delete_game_route(
@@ -176,7 +221,7 @@ def _register_human_move_route(
         except GameServiceError as exc:
             raise _bad_request(str(exc)) from exc
 
-        state_payload = _to_game_state_payload(game)
+        state_payload = _to_game_state_payload(game, game_service)
         return MoveResponse(**state_payload.model_dump(), move=payload.move)
 
 
@@ -192,22 +237,40 @@ def _register_human_resign_route(
         except GameServiceError as exc:
             raise _bad_request(str(exc)) from exc
 
-        return _to_game_state_payload(game)
+        return _to_game_state_payload(game, game_service)
 
 
 def _register_engine_move_route(
     application: FastAPI, game_service: InMemoryGameService
 ) -> None:
     @application.post("/api/games/{game_id}/engine-move", response_model=EngineMoveResponse)
-    def apply_engine_move(game_id: str) -> EngineMoveResponse:
+    def apply_engine_move(game_id: str, payload: EngineMoveRequest) -> EngineMoveResponse:
         try:
-            outcome = game_service.apply_engine_move(game_id=game_id)
+            browser_payload = payload.browser_engine_move
+            outcome = game_service.apply_engine_move_from_browser_payload(
+                game_id=game_id,
+                position_policy=browser_payload.position_raw.policy,
+                position_ownership=browser_payload.position_raw.ownership,
+                position_value=browser_payload.position_raw.value,
+                position_miscvalue=browser_payload.position_raw.miscvalue,
+                candidates=[
+                    BrowserEngineMoveCandidate(
+                        move=item.move,
+                        policy_prob=item.policy_prob,
+                        policy=item.raw_model_outputs.policy,
+                        ownership=item.raw_model_outputs.ownership,
+                        value=item.raw_model_outputs.value,
+                        miscvalue=item.raw_model_outputs.miscvalue,
+                    )
+                    for item in browser_payload.candidates
+                ],
+            )
         except GameNotFoundError as exc:
             raise _not_found(str(exc)) from exc
         except GameServiceError as exc:
             raise _bad_request(str(exc)) from exc
 
-        state_payload = _to_game_state_payload(outcome.game)
+        state_payload = _to_game_state_payload(outcome.game, game_service)
         return EngineMoveResponse(
             **state_payload.model_dump(),
             move=outcome.move,
@@ -230,9 +293,15 @@ def _register_engine_move_route(
 
 def _register_analyze_route(application: FastAPI, game_service: InMemoryGameService) -> None:
     @application.post("/api/games/{game_id}/analyze", response_model=AnalyzeResponse)
-    def analyze_game(game_id: str) -> AnalyzeResponse:
+    def analyze_game(game_id: str, payload: AnalyzeRequest) -> AnalyzeResponse:
         try:
-            evaluation = game_service.analyze_game(game_id=game_id)
+            evaluation = game_service.analyze_raw_model_outputs(
+                game_id=game_id,
+                policy=payload.raw_model_outputs.policy,
+                ownership=payload.raw_model_outputs.ownership,
+                value=payload.raw_model_outputs.value,
+                miscvalue=payload.raw_model_outputs.miscvalue,
+            )
         except GameNotFoundError as exc:
             raise _not_found(str(exc)) from exc
         except GameServiceError as exc:
@@ -245,6 +314,10 @@ def _register_analyze_route(application: FastAPI, game_service: InMemoryGameServ
                 "unresolved_count": evaluation.metrics.unresolved_count,
                 "min_black_probability": evaluation.metrics.min_black_probability,
             },
+            policy=evaluation.policy,
+            p_black=evaluation.p_black,
+            score_lead=evaluation.score_lead,
+            winrate=evaluation.winrate,
         )
 
 
@@ -265,8 +338,7 @@ def create_app(*, game_service: InMemoryGameService | None = None) -> FastAPI:
     settings = get_settings()
     resolved_game_service = game_service or InMemoryGameService(
         survival_threshold=settings.survival_threshold,
-        katago_client_factory=lambda: KataGoClient(settings=settings),
-        katago_top_n=settings.katago_top_n,
+        default_top_n=settings.default_top_n,
     )
 
     @asynccontextmanager

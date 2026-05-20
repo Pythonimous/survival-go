@@ -3,39 +3,14 @@
 from __future__ import annotations
 
 import copy
-import os
 from typing import Any
 
 import pytest
 from sgfmill import boards
 
-from backend.app.config import Settings, reset_settings_cache
+from backend.app.config import reset_settings_cache
 from backend.app.engine.board import format_gtp_coordinate, to_sgfmill_color
 from backend.app.presets.loader import get_preset_by_id
-
-
-def _real_katago_settings() -> Settings | None:
-    """Return settings when real KataGo paths are configured (env or .env file)."""
-    try:
-        settings = Settings()
-    except ValueError:
-        return None
-
-    binary = settings.katago_binary_path
-    if not binary.is_file() or not os.access(binary, os.X_OK):
-        return None
-    return settings
-
-
-@pytest.fixture
-def katago_settings() -> Settings:
-    settings = _real_katago_settings()
-    if settings is None:
-        pytest.skip(
-            "Real KataGo not configured. Set KATAGO_BINARY_PATH, "
-            "KATAGO_CONFIG_PATH, and KATAGO_MODEL_PATH to runnable paths."
-        )
-    return settings
 
 
 @pytest.fixture(autouse=True)
@@ -43,24 +18,6 @@ def _clear_settings_cache() -> None:
     reset_settings_cache()
     yield
     reset_settings_cache()
-
-
-@pytest.fixture
-def live_katago_env(
-    katago_settings: Settings, monkeypatch: pytest.MonkeyPatch
-) -> Settings:
-    """Point integration tests at the real local KataGo install."""
-    monkeypatch.setenv("KATAGO_BINARY_PATH", str(katago_settings.katago_binary_path))
-    monkeypatch.setenv("KATAGO_CONFIG_PATH", str(katago_settings.katago_config_path))
-    monkeypatch.setenv("KATAGO_MODEL_PATH", str(katago_settings.katago_model_path))
-    monkeypatch.setenv("SURVIVAL_THRESHOLD", str(katago_settings.survival_threshold))
-    monkeypatch.setenv("KATAGO_TOP_N", str(katago_settings.katago_top_n))
-    monkeypatch.setenv(
-        "KATAGO_ANALYSIS_TIMEOUT_SECONDS",
-        str(katago_settings.katago_analysis_timeout_seconds),
-    )
-    reset_settings_cache()
-    return katago_settings
 
 
 def first_legal_move_for_side(preset_id: str, *, side: str) -> str:

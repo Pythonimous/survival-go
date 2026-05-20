@@ -1,0 +1,25 @@
+{
+  "id": "partial-resolved-ownership",
+  "description": "One low-ownership point — backend survival metrics regression.",
+  "position": {
+    "boardSize": 19,
+    "setupStones": [],
+    "moves": [],
+    "sideToMove": "W"
+  },
+  "game": {
+    "presetId": "balanced",
+    "humanSide": "W"
+  },
+  "rawGenerator": "partial_resolved",
+  "expectedAnalysis": {
+    "survivalScore": 1,
+    "unresolvedCount": 1,
+    "minBlackProbability": 0.4,
+    "policyLength": 362,
+    "policySum": 1.0,
+    "pBlackLength": 361,
+    "pBlackIndex0": 0.4,
+    "winrate": 0.66524096
+  }
+}

@@ -72,7 +72,7 @@
 - **Data sources:**
   - Local KataGo binary.
   - Local KataGo model file.
-  - Local KataGo analysis config.
+  - Browser ONNX model artifacts (KataGo-compatible feature layout).
   - Project preset SGF files under `backend/app/presets/sgf/` (3 initial presets: white-flavoured, balanced, black-flavoured).
 - **Preset SGF constraints:**
   - `SZ` must be `19`.
@@ -80,10 +80,10 @@
   - Setup via `AB`/`AW`/`AE` only; no moves in the game tree.
   - Setup position must be legal (sgfmill validation).
 - **Runtime config (env):**
-  - `KATAGO_BINARY_PATH`, `KATAGO_CONFIG_PATH`, `KATAGO_MODEL_PATH`
   - `SURVIVAL_THRESHOLD` (default target `0.95`)
-  - `KATAGO_TOP_N` (default target `8`)
-  - `KATAGO_ANALYSIS_TIMEOUT_SECONDS`
+  - `DEFAULT_TOP_N` (default target `8`)
+  - `CORS_ALLOW_ORIGINS` (browser API access)
+  - ONNX model artifacts under `frontend/public/models/` (browser inference)
 - **Operational constraints:**
   - Local-first development in WSL/Linux environment.
   - Backend is source of truth for rule validation.

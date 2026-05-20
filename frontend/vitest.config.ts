@@ -9,12 +9,13 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      "@": path.resolve(rootDir, "src"),
       preact: path.resolve(rootDir, "src/shims/preact"),
     },
   },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "src/**/*.integration.test.ts"],
   },
 });

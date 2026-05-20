@@ -1,0 +1,36 @@
+{
+  "id": "one-move-white-to-play",
+  "description": "Black played D4; White to play — move-history encoding regression.",
+  "position": {
+    "boardSize": 19,
+    "setupStones": [],
+    "moves": [{ "move": "D4", "color": "B" }],
+    "sideToMove": "W"
+  },
+  "game": {
+    "presetId": "balanced",
+    "humanSide": "B"
+  },
+  "rawGenerator": "deterministic_v1",
+  "encoding": {
+    "binInputLength": 7942,
+    "globalInputLength": 19,
+    "globalInput": {
+      "0": 0,
+      "5": 0.375,
+      "6": 1,
+      "7": 0.5,
+      "9": 0
+    }
+  },
+  "expectedAnalysis": {
+    "survivalScore": 361,
+    "unresolvedCount": 361,
+    "minBlackProbability": 0.0,
+    "policyLength": 362,
+    "policySum": 1.0,
+    "pBlackLength": 361,
+    "pBlackIndex0": 0.0,
+    "winrate": 0.3400329958454089
+  }
+}

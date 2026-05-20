@@ -54,7 +54,7 @@ def test_frontend_package_json_includes_vitest_script() -> None:
 
 @pytest.mark.unit
 def test_game_setup_component_exists() -> None:
-    path = FRONTEND_DIR / "src" / "components" / "GameSetup.tsx"
+    path = FRONTEND_DIR / "src" / "features" / "game" / "GameSetup.tsx"
     assert path.is_file()
     source = path.read_text(encoding="utf-8")
     assert "onStart" in source
@@ -63,7 +63,7 @@ def test_game_setup_component_exists() -> None:
 
 @pytest.mark.unit
 def test_goban_board_supports_gtp_click_callback() -> None:
-    path = FRONTEND_DIR / "src" / "components" / "GobanBoard.tsx"
+    path = FRONTEND_DIR / "src" / "features" / "game" / "GobanBoard.tsx"
     source = path.read_text(encoding="utf-8")
     assert "onGtpClick" in source
     assert "vertexToGtp" in source
