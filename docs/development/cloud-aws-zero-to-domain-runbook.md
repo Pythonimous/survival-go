@@ -229,25 +229,23 @@ Open `https://play.example.com` in a browser → presets → start a game → pl
 
 By default, browsers fetch ONNX weights from Hugging Face (`kaya-go/kaya`). That is fine for MVP.
 
-Use S3 + CloudFront when you want:
+Use S3 + CloudFront when you want a project-controlled origin, better edge caching for large downloads, or explicit version rollout (`kaya/v0.2.2/` → `v0.2.3/`).
 
-- a project-controlled origin (less third-party outage/rate-limit risk),
-- lower latency for your users, or
-- explicit cache/version rollout control.
+**Full walkthrough (S3 bucket, CORS, CloudFront OAC, DNS, verify, rebuild):** **[cloud-onnx-s3-cloudfront.md](cloud-onnx-s3-cloudfront.md)**
 
-High-level flow:
+Summary:
 
-1. Mirror pinned artifacts with `scripts/sync_onnx_artifacts.sh` (see [onnx-model-artifacts.md](onnx-model-artifacts.md)).
-2. Upload to a versioned prefix in S3 (for example `kaya/v0.2.2/`).
-3. Put CloudFront in front of the bucket.
-4. Build frontend with:
+1. Upload pinned artifacts: `ONNX_ARTIFACT_BUCKET=… ONNX_ARTIFACT_PREFIX=kaya/v0.2.2 ./scripts/sync_onnx_artifacts.sh` ([onnx-model-artifacts.md](onnx-model-artifacts.md)).
+2. Create a **private** S3 bucket + **CloudFront** distribution with **Origin Access Control** (not public bucket ACLs).
+3. Configure **S3 CORS** so `https://play.<your-domain>` can `GET` the `.onnx` files (app and CDN are different origins).
+4. On the EC2 host, rebuild with the CDN base URL (no trailing slash):
 
 ```bash
-VITE_ONNX_MODEL_BASE_URL="https://<your-cdn-domain>/kaya/v0.2.2" \
+VITE_ONNX_MODEL_BASE_URL="https://models.example.com/kaya/v0.2.2" \
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-Keep `VITE_ONNX_MODEL_FILENAME_PREFIX` at default unless you changed filenames during mirroring.
+Use the CloudFront domain (`https://d….cloudfront.net/kaya/v0.2.2`) if you skip a custom `models.` hostname. Keep `VITE_ONNX_MODEL_FILENAME_PREFIX` at default unless you renamed files during mirroring.
 
 ---
 

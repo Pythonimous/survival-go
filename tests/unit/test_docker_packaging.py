@@ -70,6 +70,17 @@ def test_frontend_nginx_proxies_api_and_health() -> None:
 
 
 @pytest.mark.unit
+def test_frontend_nginx_serves_wasm_assets_without_spa_fallback() -> None:
+    """ORT threaded preload fetches /wasm/*.mjs; SPA fallback would return HTML."""
+    nginx = NGINX_CONF.read_text(encoding="utf-8")
+    assert "location /wasm/" in nginx
+    assert "try_files $uri =404" in nginx
+    assert "application/wasm" in nginx
+    assert "application/javascript" in nginx
+    assert "mjs" in nginx
+
+
+@pytest.mark.unit
 def test_frontend_dockerfile_copies_scripts_before_npm_ci() -> None:
     """postinstall runs copy-runtime-assets; scripts must exist before npm ci."""
     text = FRONTEND_DOCKERFILE.read_text(encoding="utf-8")

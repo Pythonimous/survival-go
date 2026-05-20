@@ -46,7 +46,7 @@ Why this is recommended:
 
 ### ONNX artifact origin (production default)
 
-Use a project-owned **S3 + CloudFront** origin for ONNX weights in production.
+Use a project-owned **S3 + CloudFront** origin for ONNX weights in production. Console steps: [cloud-onnx-s3-cloudfront.md](cloud-onnx-s3-cloudfront.md).
 
 - **Primary origin:** `https://models.<your-domain>/kaya/v0.2.2/`
 - **Backing store:** `s3://survival-go-models/kaya/v0.2.2/`

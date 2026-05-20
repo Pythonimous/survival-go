@@ -1,6 +1,9 @@
 /** ORT threaded WASM artifacts used when importing `onnxruntime-web/all` (JSEP + WebGPU). */
 const THREADED_JSEP_MJS = "ort-wasm-simd-threaded.jsep.mjs";
 const THREADED_JSEP_WASM = "ort-wasm-simd-threaded.jsep.wasm";
+const ORT_MJS_BLOB_TYPE = "application/javascript";
+const ORT_WASM_BLOB_TYPE = "application/wasm";
+const WASM_MAGIC = new Uint8Array([0x00, 0x61, 0x73, 0x6d]);
 
 let blobUrlsToRevoke: string[] = [];
 
@@ -13,7 +16,25 @@ function wasmAssetBaseUrl(): string {
   return new URL(`wasm/`, new URL(normalized, window.location.origin)).href;
 }
 
-async function fetchWasmAsset(relativeName: string): Promise<Blob> {
+function assertWasmMagic(bytes: Uint8Array, relativeName: string): void {
+  if (
+    bytes.length >= WASM_MAGIC.length &&
+    bytes.subarray(0, WASM_MAGIC.length).every((byte, index) => byte === WASM_MAGIC[index])
+  ) {
+    return;
+  }
+  const preview = new TextDecoder().decode(bytes.subarray(0, 32));
+  if (preview.trimStart().startsWith("<")) {
+    throw new Error(
+      `ONNX Runtime WASM asset ${relativeName} returned HTML (check /wasm/ routing; nginx must not SPA-fallback these files).`,
+    );
+  }
+  throw new Error(
+    `ONNX Runtime WASM asset ${relativeName} is not a valid wasm module.`,
+  );
+}
+
+async function fetchWasmAsset(relativeName: string, blobType: string): Promise<Blob> {
   const url = new URL(relativeName, wasmAssetBaseUrl()).href;
   const response = await fetch(url, { credentials: "same-origin" });
   if (!response.ok) {
@@ -21,7 +42,11 @@ async function fetchWasmAsset(relativeName: string): Promise<Blob> {
       `Failed to load ONNX Runtime WASM asset ${relativeName} (${response.status}).`,
     );
   }
-  return response.blob();
+  const buffer = await response.arrayBuffer();
+  if (blobType === ORT_WASM_BLOB_TYPE) {
+    assertWasmMagic(new Uint8Array(buffer), relativeName);
+  }
+  return new Blob([buffer], { type: blobType });
 }
 
 /**
@@ -35,8 +60,8 @@ export async function preloadThreadedOrtWasmPaths(): Promise<{
 }> {
   revokePreloadedOrtWasmPaths();
   const [mjsBlob, wasmBlob] = await Promise.all([
-    fetchWasmAsset(THREADED_JSEP_MJS),
-    fetchWasmAsset(THREADED_JSEP_WASM),
+    fetchWasmAsset(THREADED_JSEP_MJS, ORT_MJS_BLOB_TYPE),
+    fetchWasmAsset(THREADED_JSEP_WASM, ORT_WASM_BLOB_TYPE),
   ]);
   const mjs = URL.createObjectURL(mjsBlob);
   const wasm = URL.createObjectURL(wasmBlob);
