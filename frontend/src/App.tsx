@@ -3,13 +3,12 @@ import { useEffect, useState } from "react";
 import AnalysisRuntimeBanner from "@/features/analysisRuntime/AnalysisRuntimeBanner";
 import AnalysisRuntimeModelPicker from "@/features/analysisRuntime/AnalysisRuntimeModelPicker";
 import { useAnalysisRuntimeStatus } from "@/features/analysisRuntime/useAnalysisRuntimeStatus";
+import AppFooter from "@/features/app/AppFooter";
 import BoardView from "@/features/game/BoardView";
 import GameSetup from "@/features/game/GameSetup";
 import { ensureGlobalRolloutMetrics } from "@/lib/analysis/instrumentation/rolloutMetrics";
 import { apiUrl } from "@/lib/api/client";
 import type { CreateGamePayload, DifficultyPreset, PresetMetadata } from "@/types/api";
-
-const GITHUB_REPO_URL = "https://github.com/Pythonimous/survival-go";
 
 export default function App() {
   const analysisRuntimeStatus = useAnalysisRuntimeStatus();
@@ -135,11 +134,7 @@ export default function App() {
           </section>
         )}
       </main>
-      <footer className="app-footer">
-        <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
-          Source on GitHub
-        </a>
-      </footer>
+      <AppFooter />
     </div>
   );
 }

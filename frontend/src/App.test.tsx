@@ -181,15 +181,25 @@ describe("App", () => {
     expect(screen.queryByRole("radiogroup", { name: /difficulty/i })).not.toBeInTheDocument();
   });
 
-  it("shows a footer link to the GitHub repository", async () => {
+  it("shows footer inference note and links to GitHub and feedback", async () => {
     mockPresetsResponses();
 
     render(<App />);
 
-    const link = await screen.findByRole("link", { name: /source on github/i });
-    expect(link).toHaveAttribute("href", "https://github.com/Pythonimous/survival-go");
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(
+      await screen.findByText(/inference runs in your browser on your device/i),
+    ).toBeInTheDocument();
+
+    const sourceLink = await screen.findByRole("link", { name: /source on github/i });
+    expect(sourceLink).toHaveAttribute("href", "https://github.com/Pythonimous/survival-go");
+    expect(sourceLink).toHaveAttribute("target", "_blank");
+    expect(sourceLink).toHaveAttribute("rel", "noopener noreferrer");
+
+    const feedbackLink = screen.getByRole("link", { name: /send feedback/i });
+    expect(feedbackLink).toHaveAttribute(
+      "href",
+      "https://github.com/Pythonimous/survival-go/issues/new",
+    );
   });
 
   it("returns to setup when New game is clicked", async () => {
