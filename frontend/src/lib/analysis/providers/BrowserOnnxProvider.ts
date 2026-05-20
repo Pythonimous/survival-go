@@ -6,7 +6,6 @@ import {
   emitAnalysisInstrumentation,
   instrumentedAnalysisCall,
 } from "@/lib/analysis/instrumentation/bus";
-import { agentDebugLog } from "@/lib/analysis/debug-agent-log";
 import { emptySignMap, gtpToVertex } from "@/lib/go/coordinates";
 import type {
   AnalysisProvider,
@@ -27,7 +26,7 @@ import {
   type OnnxModelVariant,
   getUserSelectedOnnxModelVariant,
 } from "@/lib/analysis/runtime/modelVariant";
-import { OnnxEngine } from "@/lib/analysis/onnx/kaya/onnx-engine";
+import { CROSS_TREE_MCTS_CHUNK, OnnxEngine } from "@/lib/analysis/onnx/kaya/onnx-engine";
 import { pickConfig, probeEnvironment, type AutoPick } from "@/lib/analysis/onnx/kaya/auto-config";
 import type { AnalysisResult as KayaAnalysisResult } from "@/lib/analysis/onnx/kaya/types";
 import type { SignMap } from "@/lib/analysis/onnx/kaya/goboard";
@@ -102,6 +101,22 @@ export function resolveOnnxNumThreads(): number | undefined {
   return undefined;
 }
 
+/**
+ * uint8 on WebGPU is far slower than fp16/fp32 in practice (debug: ~41s per batch-8
+ * `session.run`). When WebGPU is in the backend chain, use Kaya auto-pick quantization.
+ */
+export function resolveBootstrapModelVariant(
+  autoPick: AutoPick,
+  userSelectedVariant: OnnxModelVariant | null,
+): { modelVariant: OnnxModelVariant; upgradedFrom: OnnxModelVariant | null } {
+  const requested = userSelectedVariant ?? autoPick.quantization;
+  const usesWebGpu = autoPick.backendChain.includes("webgpu");
+  if (usesWebGpu && requested === "uint8") {
+    return { modelVariant: autoPick.quantization, upgradedFrom: "uint8" };
+  }
+  return { modelVariant: requested, upgradedFrom: null };
+}
+
 export function buildKayaEngineBootstrapSelection(options: {
   autoPick: AutoPick;
   userSelectedVariant: OnnxModelVariant | null;
@@ -109,12 +124,17 @@ export function buildKayaEngineBootstrapSelection(options: {
   modelVariant: OnnxModelVariant;
   modelUrl: string;
   executionProviders: string[];
+  upgradedFrom: OnnxModelVariant | null;
 } {
-  const modelVariant = options.userSelectedVariant ?? options.autoPick.quantization;
+  const { modelVariant, upgradedFrom } = resolveBootstrapModelVariant(
+    options.autoPick,
+    options.userSelectedVariant,
+  );
   return {
     modelVariant,
     modelUrl: ONNX_MODEL_ARTIFACT_URLS[modelVariant],
     executionProviders: toOnnxExecutionProviders(options.autoPick.backendChain),
+    upgradedFrom,
   };
 }
 
@@ -137,30 +157,37 @@ export async function getSharedOnnxEngine(): Promise<OnnxEngine> {
         ? await preloadThreadedOrtWasmPaths()
         : undefined;
 
-      const engine = new OnnxEngine({
-        modelBuffer,
-        modelUrl: modelBuffer ? undefined : selection.modelUrl,
-        executionProviders: selection.executionProviders,
-        numThreads,
-        wasmPaths,
-      });
-      await engine.initialize();
-      const runtime = engine.getRuntimeInfo();
-      // #region agent log
-      agentDebugLog("F", "BrowserOnnxProvider.ts:engineBootstrap", "shared engine bootstrap", {
-        probeHasWebGPU: probe.hasWebGPU,
-        probeHasShaderF16: probe.hasShaderF16,
-        autoPickBackendChain: autoPick.backendChain,
-        autoPickReasoning: autoPick.reasoning,
-        modelVariant: selection.modelVariant,
-        requestedExecutionProviders: selection.executionProviders,
-        runtimeBackend: runtime.backend,
-        runtimeInputDtype: runtime.inputDataType,
-        numThreads,
-        crossOriginIsolated,
-        threadedWasmPreloaded: wasmPaths !== undefined,
-      });
-      // #endregion
+      // KataGo ONNX cannot use graph capture (not all nodes on JsExecutionProvider).
+      const providerChains: string[][] = selection.executionProviders.includes("webgpu")
+        ? [["webgpu"], selection.executionProviders]
+        : [selection.executionProviders];
+      let engine: OnnxEngine | null = null;
+      for (const executionProviders of providerChains) {
+        try {
+          const candidate = new OnnxEngine({
+            modelBuffer,
+            modelUrl: modelBuffer ? undefined : selection.modelUrl,
+            executionProviders,
+            numThreads,
+            wasmPaths,
+          });
+          await candidate.initialize();
+          engine = candidate;
+          break;
+        } catch (error) {
+          if (executionProviders === providerChains[providerChains.length - 1]) {
+            throw error;
+          }
+        }
+      }
+      if (!engine) {
+        throw new Error("Failed to initialize OnnxEngine.");
+      }
+      if (selection.upgradedFrom) {
+        console.warn(
+          `[OnnxEngine] ${selection.upgradedFrom} model is not viable on WebGPU; using ${selection.modelVariant} instead.`,
+        );
+      }
       return engine;
     })().catch((error) => {
       sharedEnginePromise = null;
@@ -433,8 +460,10 @@ export function resolveEngineMoveSearchSettings(
     topN,
     numVisits,
     maxMctsBatch,
-    childNumVisits: numVisits,
-    childMaxMctsBatch: maxMctsBatch,
+    // Free client mode: preserve full root search, evaluate shortlisted children
+    // with one visit for fast ownership estimates.
+    childNumVisits: 1,
+    childMaxMctsBatch: 1,
   };
 }
 
@@ -525,16 +554,6 @@ export class BrowserOnnxProvider implements AnalysisProvider {
         const gameState = await this.loadGameStateImpl(gameId);
         const input = positionInputFromGameState(gameState);
         const search = resolveEngineMoveSearchSettings(gameState.difficulty);
-        // #region agent log
-        agentDebugLog("A", "BrowserOnnxProvider.ts:engineMoveStart", "engine move started", {
-          gameId,
-          numVisits: search.numVisits,
-          topN: search.topN,
-          childNumVisits: search.childNumVisits,
-          maxMctsBatch: search.maxMctsBatch,
-        });
-        // #endregion
-
         const rootStartedAt = performance.now();
         const rootAnalysis = await this.submitQueueRequestImpl(
           buildQueueRequest(input, {
@@ -553,15 +572,6 @@ export class BrowserOnnxProvider implements AnalysisProvider {
           input.boardSize,
           search.topN,
         );
-        // #region agent log
-        agentDebugLog("A", "BrowserOnnxProvider.ts:afterRoot", "root done, shortlist ready", {
-          rootPhaseMs: performance.now() - rootStartedAt,
-          legalMoveCount: legalMoves.length,
-          policyShortlistCount: shortlistedMoves.length,
-          shortlistLimit: policyShortlistLimit(search.topN),
-        });
-        // #endregion
-
         const childRequests = shortlistedMoves.map((move) =>
           buildQueueRequest(childPositionForCandidate(input, move), {
             numVisits: search.childNumVisits,
@@ -581,24 +591,21 @@ export class BrowserOnnxProvider implements AnalysisProvider {
           const engine = await getSharedOnnxEngine();
           engine.resetInferenceRunCount();
         }
-        // #region agent log
-        agentDebugLog("A", "BrowserOnnxProvider.ts:beforeChildBatch", "starting child batch", {
-          childRequestCount: childRequests.length,
-          childNumVisits: search.childNumVisits,
-        });
-        // #endregion
         let childAnalyses: Awaited<ReturnType<typeof this.submitQueueBatchImpl>> = [];
         try {
-          childAnalyses = childRequests.length
-            ? await this.submitQueueBatchImpl(childRequests)
-            : [];
+          if (search.childNumVisits <= 1) {
+            childAnalyses = childRequests.length
+              ? await this.submitQueueBatchImpl(childRequests)
+              : [];
+          } else {
+            for (let offset = 0; offset < childRequests.length; offset += CROSS_TREE_MCTS_CHUNK) {
+              const slice = childRequests.slice(offset, offset + CROSS_TREE_MCTS_CHUNK);
+              if (slice.length === 0) continue;
+              const part = await this.submitQueueBatchImpl(slice);
+              childAnalyses.push(...part);
+            }
+          }
         } catch (error) {
-          // #region agent log
-          agentDebugLog("A", "BrowserOnnxProvider.ts:childBatchError", "child batch failed", {
-            childPhaseMs: performance.now() - childStartedAt,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          // #endregion
           throw error;
         }
         if (
@@ -610,13 +617,6 @@ export class BrowserOnnxProvider implements AnalysisProvider {
           childInferenceCallCount = engine.getInferenceRunCount();
         }
         const childPhaseMs = performance.now() - childStartedAt;
-        // #region agent log
-        agentDebugLog("A", "BrowserOnnxProvider.ts:afterChildBatch", "child batch finished", {
-          childPhaseMs,
-          childInferenceCallCount,
-          childResultCount: childAnalyses.length,
-        });
-        // #endregion
         if (childAnalyses.length !== childRequests.length) {
           throw new Error("Kaya engine batch analysis returned unexpected candidate count.");
         }

@@ -2,7 +2,6 @@
 // Ported from kaya-go/kaya (AGPL-3.0), packages/ai-engine/src/onnx-mcts.ts
 // Upstream commit: 8fafeac0fedde020c447d931c0b1afdf283edf2a
 
-import { agentDebugLog } from '@/lib/analysis/debug-agent-log';
 import { GoBoard, type Sign } from './goboard';
 import type { MCTSNode, MCTSBatchEvaluator, MCTSProgress } from './onnx-types';
 import type { AnalysisResult, MoveSuggestion } from './types';
@@ -250,11 +249,7 @@ export async function runBatchedMCTS(
   const anyActive = (): boolean =>
     active.some(search => search.completed < search.numVisits && !signal?.aborted);
 
-  let mctsIteration = 0;
-  const mctsLoopStartedAt = performance.now();
   while (anyActive()) {
-    mctsIteration += 1;
-    const iterationStartedAt = performance.now();
     const pending: { searchIdx: number; path: MCTSStep[]; needsEval: boolean }[] = [];
 
     for (let searchIdx = 0; searchIdx < active.length; searchIdx += 1) {
@@ -281,18 +276,7 @@ export async function runBatchedMCTS(
       }
     }
 
-    if (pending.length === 0) {
-      // #region agent log
-      agentDebugLog("D", "onnx-mcts.ts:emptyPendingBreak", "breaking with empty pending", {
-        mctsIteration,
-        searchCount: active.length,
-        completed: active.map(search => search.completed),
-        numVisits: active.map(search => search.numVisits),
-        anyActive: anyActive(),
-      });
-      // #endregion
-      break;
-    }
+    if (pending.length === 0) break;
 
     const toEvaluate = pending.filter(item => item.needsEval);
     const evalResults: AnalysisResult[] = [];
@@ -313,6 +297,9 @@ export async function runBatchedMCTS(
           ? Math.floor(maxInferenceBatch)
           : leaves.length;
       for (let chunkStart = 0; chunkStart < leaves.length; chunkStart += inferenceChunk) {
+        if (chunkStart > 0) {
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+        }
         const chunk = leaves.slice(chunkStart, chunkStart + inferenceChunk);
         evalResults.push(...(await batchEvaluator(chunk)));
       }
@@ -357,17 +344,6 @@ export async function runBatchedMCTS(
       search.completed += 1;
     }
 
-    if (toEvaluate.length > 0 && evalIdx !== toEvaluate.length) {
-      // #region agent log
-      agentDebugLog("E", "onnx-mcts.ts:evalMismatch", "eval count mismatch", {
-        mctsIteration,
-        toEvaluateCount: toEvaluate.length,
-        evalIdx,
-        evalResultCount: evalResults.length,
-      });
-      // #endregion
-    }
-
     for (const search of active) {
       if (!search.onProgress || !search.root.children || search.root.children.size === 0) {
         continue;
@@ -400,34 +376,10 @@ export async function runBatchedMCTS(
       });
     }
 
-    if (mctsIteration <= 5 || mctsIteration % 10 === 0 || pending.length > 40) {
-      // #region agent log
-      agentDebugLog("B", "onnx-mcts.ts:iteration", "batched MCTS iteration", {
-        mctsIteration,
-        iterationMs: performance.now() - iterationStartedAt,
-        searchCount: active.length,
-        pendingCount: pending.length,
-        toEvaluateCount: toEvaluate.length,
-        evalResultCount: evalResults.length,
-        maxMctsBatch,
-        maxInferenceBatch,
-      });
-      // #endregion
-    }
-
     if (anyActive()) {
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
   }
-
-  // #region agent log
-  agentDebugLog("B", "onnx-mcts.ts:loopDone", "batched MCTS loop finished", {
-    mctsIteration,
-    totalLoopMs: performance.now() - mctsLoopStartedAt,
-    searchCount: active.length,
-    completed: active.map(search => search.completed),
-  });
-  // #endregion
 
   for (const search of active) {
     if (

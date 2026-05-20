@@ -6,7 +6,6 @@
  * ONNX session creation and initialization helpers.
  */
 import * as ort from 'onnxruntime-web/all';
-import { agentDebugLog } from '@/lib/analysis/debug-agent-log';
 import type { OnnxEngineConfig } from './onnx-types';
 import { assertKayaOutputNames } from './outputContract';
 
@@ -311,27 +310,6 @@ export async function createOnnxSession(
   console.log(
     `[AI] Model loaded: ${backendInfo}${threadInfo}${dtypeInfo}${gcInfo}${batchInfo} in ${timeStr}`
   );
-
-  const webgpuEnv = (ort.env as { webgpu?: { adapter?: { info?: unknown } } }).webgpu;
-  const adapterInfo = webgpuEnv?.adapter
-    ? ((webgpuEnv.adapter as { info?: Record<string, unknown> }).info ??
-      (webgpuEnv.adapter as Record<string, unknown>))
-    : null;
-  // #region agent log
-  agentDebugLog("F", "onnx-session.ts:sessionCreated", "ONNX session backend resolved", {
-    webgpuAvailable,
-    requestedProviders: config.executionProviders ?? ["webgpu", "wasm"],
-    effectiveProviders,
-    usedProviders: result.usedProviders,
-    graphCaptureEnabled,
-    useGpuInputs,
-    inputDataType: detected.inputDataType,
-    numThreads,
-    crossOriginIsolated: isCrossOriginIsolated,
-    maxInferenceBatch: detected.maxInferenceBatch,
-    adapterInfo,
-  });
-  // #endregion
 
   return {
     session: result.session,

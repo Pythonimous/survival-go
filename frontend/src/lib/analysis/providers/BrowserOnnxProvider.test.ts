@@ -60,11 +60,30 @@ describe("BrowserOnnxProvider", () => {
 
     const selection = buildKayaEngineBootstrapSelection({
       autoPick,
+      userSelectedVariant: "fp32",
+    });
+
+    expect(selection.modelVariant).toBe("fp32");
+    expect(selection.modelUrl).toBe(ONNX_MODEL_ARTIFACT_URLS.fp32);
+    expect(selection.upgradedFrom).toBeNull();
+  });
+
+  it("upgrades uint8 to auto-pick quantization when WebGPU is available", () => {
+    const autoPick: AutoPick = {
+      modelId: "kata1-b28-latest",
+      quantization: "fp16",
+      backendChain: ["webgpu", "wasm"],
+      reasoning: "webgpu available",
+    };
+
+    const selection = buildKayaEngineBootstrapSelection({
+      autoPick,
       userSelectedVariant: "uint8",
     });
 
-    expect(selection.modelVariant).toBe("uint8");
-    expect(selection.modelUrl).toBe(ONNX_MODEL_ARTIFACT_URLS.uint8);
+    expect(selection.modelVariant).toBe("fp16");
+    expect(selection.modelUrl).toBe(ONNX_MODEL_ARTIFACT_URLS.fp16);
+    expect(selection.upgradedFrom).toBe("uint8");
   });
 
   it("falls back to wasm when auto-pick has no web backend", () => {
@@ -136,7 +155,7 @@ describe("BrowserOnnxProvider", () => {
     });
   });
 
-  it("maps max_visits to both root and per-candidate child MCTS", () => {
+  it("maps max_visits to root MCTS and single-visit shortlisted children", () => {
     const search = resolveEngineMoveSearchSettings({
       max_visits: 16,
       top_n: 8,
@@ -151,8 +170,8 @@ describe("BrowserOnnxProvider", () => {
     });
 
     expect(search.numVisits).toBe(16);
-    expect(search.childNumVisits).toBe(16);
-    expect(search.childMaxMctsBatch).toBe(8);
+    expect(search.childNumVisits).toBe(1);
+    expect(search.childMaxMctsBatch).toBe(1);
   });
 
   it("limits policy shortlist to ceil(1.5 * top_n)", () => {
@@ -273,10 +292,11 @@ describe("BrowserOnnxProvider", () => {
 
     await provider.requestEngineMove("game-wide-pool");
 
+    expect(submitQueueBatch).toHaveBeenCalledTimes(1);
     const childRequests = submitQueueBatch.mock.calls[0]?.[0] ?? [];
     expect(childRequests).toHaveLength(5);
-    expect(childRequests.every((request) => request.numVisits === 20)).toBe(true);
-    expect(childRequests.every((request) => request.maxMctsBatch === 8)).toBe(true);
+    expect(childRequests.every((request) => request.numVisits === 1)).toBe(true);
+    expect(childRequests.every((request) => request.maxMctsBatch === 1)).toBe(true);
     const postedCalls = postPayload.mock.calls as unknown as Array<
       [{ gameId: string; payload: BrowserEngineMovePayload }]
     >;
@@ -465,8 +485,8 @@ describe("BrowserOnnxProvider", () => {
         expect.objectContaining<Partial<AnalysisRequest>>({
           priority: "batch",
           nextToPlay: "W",
-          numVisits: 20,
-          maxMctsBatch: 8,
+          numVisits: 1,
+          maxMctsBatch: 1,
         }),
       ]),
     );

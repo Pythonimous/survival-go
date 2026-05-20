@@ -48,7 +48,7 @@ See **[onnx-model-artifacts.md](./onnx-model-artifacts.md)** for the variant tab
 
 - **`fp32`** — default when WebGPU is viable.
 - **`fp16`** — balanced CPU-only default.
-- **`uint8`** — constrained-runtime fallback / smallest download.
+- **`uint8`** — constrained-runtime fallback / smallest download. **Not used with WebGPU** (bootstrap upgrades to `fp16`/`fp32` per auto-pick — uint8 on WebGPU is orders of magnitude slower in practice).
 
 ## License + attribution
 
@@ -70,7 +70,7 @@ Engine move behaviour is preserved through the boundary:
 
 `BrowserOnnxProvider` emits `engine_move_phase` instrumentation (root ms, child phase ms, child batch size/chunks, child execution mode, child ONNX inference call count, backend roundtrip ms, `legalMoveCount` vs `topN`) for latency tuning and regression guards.
 
-Multi-visit child evaluation uses `runBatchedMCTS` in **groups of up to four** candidate trees (`CROSS_TREE_MCTS_CHUNK`): synchronized MCTS iterations within a group, with leaf evaluator calls chunked to `maxInferenceBatch` (default **8** on WebGPU when the model has dynamic batch). Full `max_visits` per candidate is preserved for ownership averaging.
+Multi-visit child evaluation uses `runBatchedMCTS` in **groups of up to four** candidate trees (`CROSS_TREE_MCTS_CHUNK`), submitted as separate queue batches so the UI can breathe between groups. Leaf evaluator calls are chunked to `maxInferenceBatch` (default **8** on WebGPU when the model has dynamic batch). Full `max_visits` per candidate is preserved for ownership averaging. WebGPU **graph capture is not used** for KataGo ONNX (ORT rejects it: not all nodes partition to `JsExecutionProvider`).
 
 ## Rollout metrics (operator)
 

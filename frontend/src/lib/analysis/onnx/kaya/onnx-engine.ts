@@ -20,7 +20,6 @@ import {
   debugLog,
   processBatchResults,
 } from './onnx-utils';
-import { agentDebugLog } from '@/lib/analysis/debug-agent-log';
 import { filterKoMoves, runBatchedMCTS, runMCTS, type MCTSSearchSpec } from './onnx-mcts';
 
 /** Max trees advanced together in one `runBatchedMCTS` (limits leaf fan-out per iteration). */
@@ -141,21 +140,6 @@ export class OnnxEngine extends Engine {
           this.useGpuInputs = false;
         }
       }
-
-      const runtime = this.getRuntimeInfo();
-      // #region agent log
-      agentDebugLog("F", "onnx-engine.ts:initialized", "OnnxEngine runtime after init", {
-        usedProviders: this.usedProviders,
-        runtimeBackend: runtime.backend,
-        isUsingGpuProvider: this.isUsingGpuProvider(),
-        useGpuInputs: this.useGpuInputs,
-        graphCaptureEnabled: this.graphCaptureEnabled,
-        gpuDevicePresent: Boolean(this.gpuDevice),
-        gpuBufferDevicePresent: Boolean(this.gpu.device),
-        inputDataType: this.inputDataType,
-        maxInferenceBatch: this.maxInferenceBatch,
-      });
-      // #endregion
     } catch (e) {
       console.error('[OnnxEngine] Failed to initialize:', e);
       throw e;
@@ -282,20 +266,10 @@ export class OnnxEngine extends Engine {
     const allResults: AnalysisResult[] = [];
 
     for (let chunkStart = 0; chunkStart < leaves.length; chunkStart += chunkSize) {
-      const chunk = leaves.slice(chunkStart, chunkStart + chunkSize);
-      const featurizeStartedAt = performance.now();
-      const allocBytes = chunk.length * (perPosBinSize * 4 + 19 * 4);
-      if (leaves.length >= 16 || allocBytes >= 4_000_000) {
-        // #region agent log
-        agentDebugLog("C", "onnx-engine.ts:featurizeChunk", "large featurize chunk", {
-          leafCount: chunk.length,
-          totalLeaves: leaves.length,
-          allocBytes,
-          chunkSize,
-          boardSize: size,
-        });
-        // #endregion
+      if (chunkStart > 0) {
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
       }
+      const chunk = leaves.slice(chunkStart, chunkStart + chunkSize);
       const batchBin = new Float32Array(chunk.length * perPosBinSize);
       const batchGlobal = new Float32Array(chunk.length * 19);
       const plas: Sign[] = [];
@@ -314,20 +288,7 @@ export class OnnxEngine extends Engine {
           size
         );
       }
-
-      const featurizeMs = performance.now() - featurizeStartedAt;
-      const inferStartedAt = performance.now();
       allResults.push(...(await this.runBatchInference(batchBin, batchGlobal, plas, size)));
-      if (leaves.length >= 8) {
-        // #region agent log
-        agentDebugLog("G", "onnx-engine.ts:featurizeInferChunk", "featurize + infer chunk", {
-          leafCount: chunk.length,
-          totalLeaves: leaves.length,
-          featurizeMs,
-          inferMs: performance.now() - inferStartedAt,
-        });
-        // #endregion
-      }
     }
 
     return allResults;
@@ -372,50 +333,19 @@ export class OnnxEngine extends Engine {
       size
     );
 
-    if (!this.agentLoggedInferenceBackend) {
-      this.agentLoggedInferenceBackend = true;
-      const ortWasmThreads =
-        typeof ort !== "undefined" && ort.env?.wasm
-          ? ort.env.wasm.numThreads
-          : undefined;
-      // #region agent log
-      agentDebugLog("F", "onnx-engine.ts:firstInference", "first batch inference path", {
-        usedProviders: this.usedProviders,
-        runtimeBackend: this.getRuntimeInfo().backend,
-        isUsingGpuProvider: this.isUsingGpuProvider(),
-        useGpuInputs: this.useGpuInputs,
-        usingGpuBuffers,
-        graphCaptureEnabled: this.graphCaptureEnabled,
-        gpuDevicePresent: Boolean(this.gpuDevice),
-        batchSize,
-        inputDataType: this.inputDataType,
-        ortWasmThreads,
-      });
-      // #endregion
-    }
+    if (!this.agentLoggedInferenceBackend) this.agentLoggedInferenceBackend = true;
 
     this.gpuDevice?.pushErrorScope('validation');
-    const sessionRunStartedAt = performance.now();
     const results = await this.session!.run({ bin_input: binTensor, global_input: globalTensor });
-    const sessionRunMs = performance.now() - sessionRunStartedAt;
     this.lastInferenceRunCount += 1;
-    if (batchSize >= 4) {
-      // #region agent log
-      agentDebugLog("G", "onnx-engine.ts:sessionRun", "ORT session.run timing", {
-        batchSize,
-        sessionRunMs,
-        usingGpuBuffers,
-        runtimeBackend: this.getRuntimeInfo().backend,
-      });
-      // #endregion
-    }
     await this.checkGpuErrorScope();
 
     if (!usingGpuBuffers) {
       binTensor.dispose();
       globalTensor.dispose();
     }
-    return processBatchResults(results, plas, size, batchSize);
+    const analysis = await processBatchResults(results, plas, size, batchSize);
+    return analysis;
   }
 
   private async prepareInputTensors(
@@ -581,19 +511,9 @@ export class OnnxEngine extends Engine {
       }
 
       const sharedSignal = pending.find(item => item.signal)?.signal;
-      const maxMctsBatch = Math.min(...pending.map(item => item.maxMctsBatch));
-      // #region agent log
-      agentDebugLog("B", "onnx-engine.ts:multiVisitBatchStart", "multi-visit analyzeBatch", {
-        pendingCount: pending.length,
-        maxMctsBatch,
-        maxInferenceBatch: this.maxInferenceBatch,
-        numVisits: pending.map(item => item.spec.numVisits),
-      });
-      // #endregion
       const evaluator: MCTSBatchEvaluator = async leaves =>
         this.runFeaturizedBatchInference(leaves, size);
 
-      const batchStartedAt = performance.now();
       const treeChunks: typeof pending[] = [];
       for (let offset = 0; offset < pending.length; offset += CROSS_TREE_MCTS_CHUNK) {
         treeChunks.push(pending.slice(offset, offset + CROSS_TREE_MCTS_CHUNK));
@@ -626,16 +546,6 @@ export class OnnxEngine extends Engine {
           }
         }
       }
-
-      // #region agent log
-      agentDebugLog("B", "onnx-engine.ts:multiVisitBatchDone", "multi-visit analyzeBatch done", {
-        pendingCount: pending.length,
-        treeChunkCount: treeChunks.length,
-        crossTreeChunkSize: CROSS_TREE_MCTS_CHUNK,
-        batchMs: performance.now() - batchStartedAt,
-        inferenceRunCount: this.lastInferenceRunCount,
-      });
-      // #endregion
       this.debugLog('Multi-visit batch analysis complete', {
         actualBatchSize: pending.length,
         inferenceRunCount: this.lastInferenceRunCount,
