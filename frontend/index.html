@@ -3,6 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Cross-Origin Isolation bootstrap.
+      Mirrors kaya-go/kaya's `apps/web/index.html`: ONNX Runtime Web's
+      threaded WASM backend requires `self.crossOriginIsolated === true`
+      (which gates `SharedArrayBuffer`). Our dev server and nginx already
+      send COOP/COEP, but `coi-serviceworker` installs a same-origin
+      service worker that re-injects those headers as a safety net for
+      CDNs / preview hosts / embedders that strip them. Must load before
+      any module that imports `onnxruntime-web`.
+    -->
+    <script src="/coi-serviceworker.js"></script>
     <title>Survival KataGo</title>
   </head>
   <body>

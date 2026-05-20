@@ -1,0 +1,39 @@
+{
+  "id": "black-prefers-higher-min-black",
+  "description": "Black engine picks higher min_black_probability even when survival_score is worse.",
+  "game": {
+    "presetId": "balanced",
+    "humanSide": "W"
+  },
+  "difficulty": {
+    "maxVisits": 20,
+    "topN": 2,
+    "randomness": 0,
+    "variantAwareness": 1,
+    "temperature": 0,
+    "blunderMargin": 1
+  },
+  "positionRaw": {
+    "ownershipProfile": {
+      "kind": "uniform",
+      "p_black": 0.5
+    }
+  },
+  "policyCandidates": [
+    {
+      "moveSlot": 0,
+      "policyProb": 0.4,
+      "winrate": 0.2
+    },
+    {
+      "moveSlot": 1,
+      "policyProb": 0.3,
+      "winrate": 0.55
+    }
+  ],
+  "expected": {
+    "selectedMoveSlot": 1,
+    "resigned": false,
+    "rankedMoveSlots": [1, 0]
+  }
+}

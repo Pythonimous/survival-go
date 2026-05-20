@@ -19,7 +19,7 @@ export VITE_API_BASE_URL="https://api.example.com"
 ./scripts/build_frontend.sh
 ```
 
-Template: [`frontend/.env.production.example`](../../frontend/.env.production.example). Helper: `frontend/src/lib/api.ts` (`apiUrl()`).
+Template: [`frontend/.env.production.example`](../../frontend/.env.production.example). Helper: `frontend/src/lib/api/client.ts` (`apiUrl()`).
 
 Do not include a trailing slash on the base URL.
 

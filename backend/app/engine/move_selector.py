@@ -12,20 +12,36 @@ EngineSide = Literal["B", "W"]
 
 @dataclass(frozen=True, slots=True)
 class CandidateMove:
-    """One move candidate and its Survival score."""
+    """One move candidate for engine selection and UI shortlists."""
 
     move: str
     survival_score: int
     min_black_probability: float
     policy: float = 0.0
     score_lead: float | None = None
+    winrate: float | None = None
 
 
 def _survival_term(candidate: CandidateMove, *, engine_side: EngineSide) -> float:
-    """Side-aware Survival objective term used by the composite scorer."""
+    """Side-aware Survival objective from ownership metrics (analyze path)."""
     if engine_side == "B":
         return candidate.min_black_probability
     return 1.0 - candidate.min_black_probability
+
+
+def _winrate_term(candidate: CandidateMove, *, engine_side: EngineSide) -> float:
+    """Side-aware utility from root MCTS child winrate (Black perspective)."""
+    winrate = candidate.winrate if candidate.winrate is not None else 0.5
+    if engine_side == "B":
+        return winrate
+    return 1.0 - winrate
+
+
+def _ranking_term(candidate: CandidateMove, *, engine_side: EngineSide) -> float:
+    """Prefer MCTS winrate when present; otherwise ownership-based Survival."""
+    if candidate.winrate is not None:
+        return _winrate_term(candidate, engine_side=engine_side)
+    return _survival_term(candidate, engine_side=engine_side)
 
 
 def _policy_term(candidate: CandidateMove, *, policy_max: float) -> float:
@@ -53,11 +69,11 @@ def _composite_score(
     """Compute blended candidate utility from objective + anchor knobs.
 
     The final value combines:
-    - side-aware Survival term (core objective),
+    - side-aware ranking term (MCTS winrate or ownership Survival),
     - policy/score anchors (`policy_anchor`, `score_anchor`),
     - `variant_awareness` interpolation between pure Survival and anchored score.
     """
-    survival_global = _survival_term(candidate, engine_side=engine_side)
+    survival_global = _ranking_term(candidate, engine_side=engine_side)
     blend_total = difficulty.global_weight + difficulty.local_weight
     survival_blended = survival_global if blend_total > 0 else 0.0
     anchor_bonus = (
@@ -113,7 +129,7 @@ def rank_candidates_for_side(
                 policy_max=policy_max,
                 max_abs_score=max_abs_score,
             ),
-            -_survival_term(candidate, engine_side=engine_side),
+            -_ranking_term(candidate, engine_side=engine_side),
             candidate.survival_score if engine_side == "B" else -candidate.survival_score,
         ),
     )
@@ -144,6 +160,13 @@ def filter_blunders(
         for candidate, score in zip(ranked_candidates, scores, strict=True)
         if score >= floor
     ]
+
+
+def select_katago_top_candidate(candidates: list[CandidateMove]) -> CandidateMove:
+    """Pick the candidate with the highest KataGo policy / visit prior from the browser."""
+    if not candidates:
+        raise ValueError("select_katago_top_candidate requires at least one candidate")
+    return max(candidates, key=lambda candidate: (candidate.policy, candidate.move))
 
 
 def select_candidate_for_side(

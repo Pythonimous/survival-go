@@ -1,14 +1,23 @@
 import { useEffect, useState } from "react";
 
-import BoardView from "./components/BoardView";
-import GameSetup from "./components/GameSetup";
-import { apiUrl } from "./lib/api";
-import type { CreateGamePayload, DifficultyPreset, PresetMetadata } from "./types/api";
+import AnalysisRuntimeBanner from "@/features/analysisRuntime/AnalysisRuntimeBanner";
+import AnalysisRuntimeModelPicker from "@/features/analysisRuntime/AnalysisRuntimeModelPicker";
+import { useAnalysisRuntimeStatus } from "@/features/analysisRuntime/useAnalysisRuntimeStatus";
+import BoardView from "@/features/game/BoardView";
+import GameSetup from "@/features/game/GameSetup";
+import { ensureGlobalRolloutMetrics } from "@/lib/analysis/instrumentation/rolloutMetrics";
+import { apiUrl } from "@/lib/api/client";
+import type { CreateGamePayload, DifficultyPreset, PresetMetadata } from "@/types/api";
 
 const GITHUB_REPO_URL = "https://github.com/Pythonimous/survival-go";
 
 export default function App() {
+  const analysisRuntimeStatus = useAnalysisRuntimeStatus();
   const [presets, setPresets] = useState<readonly PresetMetadata[]>([]);
+
+  useEffect(() => {
+    ensureGlobalRolloutMetrics();
+  }, []);
   const [difficultyPresets, setDifficultyPresets] = useState<readonly DifficultyPreset[]>([]);
   const [presetsLoading, setPresetsLoading] = useState(true);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -90,6 +99,15 @@ export default function App() {
           <section className="setup-foreground" aria-label="Game setup">
             <h1>Survival KataGo</h1>
             <p>Go training variant focused on total board ownership.</p>
+            <AnalysisRuntimeBanner status={analysisRuntimeStatus} />
+            <AnalysisRuntimeModelPicker
+              variants={analysisRuntimeStatus.modelVariants}
+              selectedVariant={analysisRuntimeStatus.selectedVariant}
+              recommendedVariant={analysisRuntimeStatus.recommendedVariant}
+              loadSnapshot={analysisRuntimeStatus.loadSnapshot}
+              capabilityCompatible={!analysisRuntimeStatus.inferenceBlocked}
+              onSelectVariant={analysisRuntimeStatus.selectModelVariant}
+            />
             {presetsLoading ? (
               <p role="status">Loading presets...</p>
             ) : (
@@ -97,6 +115,7 @@ export default function App() {
                 presets={presets}
                 difficultyPresets={difficultyPresets}
                 onStart={handleStart}
+                startDisabled={analysisRuntimeStatus.startDisabled}
               />
             )}
             {setupError && <p role="alert">{setupError}</p>}
@@ -106,7 +125,6 @@ export default function App() {
             <h1>Survival KataGo</h1>
             <BoardView
               gameId={gameId}
-              onTryAgain={handleStart}
               onNewGame={async () => {
                 if (gameId !== null) {
                   await endGameSession(gameId);

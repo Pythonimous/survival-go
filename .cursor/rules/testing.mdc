@@ -10,6 +10,13 @@ alwaysApply: true
 
 **Forbidden:** pytest (or any test) whose assertions are primarily "this markdown/README/doc contains string X" or "file Y links to Z". Documentation is validated by human review, not by grep tests. Never create `test_*_docs.py` or similar for new work; do not extend legacy doc contract tests.
 
+## Python interpreter selection
+
+- **Always prefer the project-local `.venv` when present.** Use `./.venv/bin/python -m <tool>` (e.g. `./.venv/bin/python -m pytest`, `./.venv/bin/python -m mypy .`, `./.venv/bin/python -m flake8`) instead of bare `pytest` / `mypy` / `flake8` or `python3 -m ...`.
+- If `$VIRTUAL_ENV` is already exported, you may use the tools on `PATH` (they will resolve inside the active venv). Otherwise fall back to `./.venv/bin/python -m ...` explicitly.
+- Only fall back to a system interpreter (`python3`) when neither `.venv` nor an active `VIRTUAL_ENV` exists. Never run the broken Windows shim (`/mnt/c/.../pyenv-win/shims/...`) from WSL.
+- `./scripts/run_tests.sh` already auto-selects `.venv` — when you use it, you don't need to prefix anything.
+
 ## Quality gates
 
 - Run `flake8` early or rely on `pytest -m lint` for the gate.
@@ -24,3 +31,8 @@ alwaysApply: true
 - Launch `./scripts/run_e2e_tests.sh` when browser flows are required; the script automatically starts/stops the server.
 - Configure server startup via `E2E_SERVER_COMMAND` env var or disable with `E2E_SERVER_DISABLED=true` for non-web projects.
 - Share fixtures through `tests/conftest.py` to avoid duplication.
+
+## Frontend test runner
+
+- Run Vitest from the repo root via `npm --prefix frontend test -- --run <vitest-paths>` (paths are relative to `frontend/`, e.g. `src/lib/analysis/onnx/io/contract.test.ts`).
+- Do not invoke `npm test` from `/home/kirill/survival-go` directly — there is no root `package.json`, only `frontend/package.json`.

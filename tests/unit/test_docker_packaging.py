@@ -43,29 +43,17 @@ def test_compose_local_and_prod_use_distinct_host_ports() -> None:
 
 
 @pytest.mark.unit
-def test_setup_katago_extracts_appimage_without_fuse() -> None:
-    """Docker has no /dev/fuse; release zips ship an AppImage that must be extracted."""
-    script = PROJECT_ROOT / "scripts" / "setup_katago.sh"
-    text = script.read_text(encoding="utf-8")
-    assert "--appimage-extract" in text
-    assert "squashfs-root/AppRun" in text
-
-
-@pytest.mark.unit
-def test_backend_dockerfile_installs_katago_and_runs_uvicorn() -> None:
+def test_backend_dockerfile_runs_uvicorn_without_katago_install() -> None:
     assert BACKEND_DOCKERFILE.is_file()
     text = BACKEND_DOCKERFILE.read_text(encoding="utf-8")
     required = (
-        "scripts/setup_katago.sh",
-        "analysis.docker.cfg",
         "uvicorn",
         "backend.app.main:app",
-        "KATAGO_BINARY_PATH",
-        "KATAGO_CONFIG_PATH",
-        "KATAGO_MODEL_PATH",
     )
     for needle in required:
         assert needle in text, f"missing {needle!r} in backend Dockerfile"
+    assert "setup_katago" not in text
+    assert "KATAGO_" not in text
 
 
 @pytest.mark.unit
@@ -82,23 +70,18 @@ def test_frontend_nginx_proxies_api_and_health() -> None:
 
 
 @pytest.mark.unit
-def test_dockerignore_excludes_local_venv_and_katago_artifacts() -> None:
+def test_dockerignore_excludes_local_venv_and_env() -> None:
     assert DOCKERIGNORE.is_file()
     text = DOCKERIGNORE.read_text(encoding="utf-8")
-    for needle in (".venv", "node_modules", "third_party/katago/katago", ".env"):
+    for needle in (".venv", "node_modules", ".env"):
         assert needle in text, f"missing {needle!r} in .dockerignore"
 
 
 @pytest.mark.unit
-def test_env_docker_example_documents_container_paths() -> None:
+def test_env_docker_example_documents_survival_defaults() -> None:
     assert ENV_DOCKER_EXAMPLE.is_file()
     text = ENV_DOCKER_EXAMPLE.read_text(encoding="utf-8")
-    for needle in (
-        "KATAGO_BINARY_PATH",
-        "KATAGO_CONFIG_PATH",
-        "analysis.docker.cfg",
-        "KATAGO_ANALYSIS_TIMEOUT_SECONDS",
-    ):
+    for needle in ("SURVIVAL_THRESHOLD", "DEFAULT_TOP_N"):
         assert needle in text, f"missing {needle!r} in .env.docker.example"
 
 
@@ -111,9 +94,8 @@ def test_docker_compose_doc_covers_build_and_health() -> None:
         "docker-compose.yml",
         ".env.docker.example",
         "environment.md",
-        "analysis.docker.cfg",
         "GET /health",
-        "katago-docker.md",
+        "browser-inference-design.md",
         "local-run.md",
     )
     for needle in required:

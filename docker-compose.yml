@@ -1,15 +1,10 @@
-# Optional local packaging: backend + KataGo + nginx frontend (no cloud required).
+# Optional local packaging: backend API + nginx frontend (browser ONNX inference).
 # See docs/development/docker-compose.md
 services:
   backend:
     build:
       context: .
       dockerfile: docker/backend/Dockerfile
-    environment:
-      KATAGO_BINARY_PATH: /opt/katago/katago
-      KATAGO_CONFIG_PATH: /app/third_party/katago/analysis.docker.cfg
-      KATAGO_MODEL_PATH: /opt/katago/kata1-b20c256x2-s4384473088-d968438914.bin.gz
-      KATAGO_ANALYSIS_TIMEOUT_SECONDS: "60"
     expose:
       - "8000"
     healthcheck:
@@ -17,7 +12,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 10s
 
   frontend:
     build:

@@ -44,6 +44,22 @@ Why this is recommended:
 - Decouples frontend deploys from backend runtime.
 - Works well with Namecheap-managed domains.
 
+### ONNX artifact origin (production default)
+
+Use a project-owned **S3 + CloudFront** origin for ONNX weights in production.
+
+- **Primary origin:** `https://models.<your-domain>/kaya/v0.2.2/`
+- **Backing store:** `s3://survival-go-models/kaya/v0.2.2/`
+- **Expected files at that prefix:** `...fp32.onnx`, `...fp16.onnx`, `...uint8.onnx`
+- **Frontend env default:** set `VITE_ONNX_MODEL_BASE_URL=https://models.<your-domain>/kaya/v0.2.2`
+- Keep Hugging Face (`kaya-go/kaya`) as upstream source and emergency override, not the production default.
+
+Why this shape:
+
+- Removes third-party availability/rate-limit risk from runtime gameplay.
+- Gives explicit version pinning and controlled promote/rollback by changing one env value.
+- Keeps cloud topology consistent with existing static delivery (S3 + CloudFront).
+
 ## Network layout
 
 ```text
@@ -90,10 +106,10 @@ Suggested split:
   - any sensitive private endpoints/credentials
 - ECS env vars (non-sensitive defaults):
   - `SURVIVAL_THRESHOLD`
-  - `KATAGO_TOP_N`
-  - `KATAGO_ANALYSIS_TIMEOUT_SECONDS`
+  - `DEFAULT_TOP_N`
+  - `CORS_ALLOW_ORIGINS`
 
-KataGo file path vars still exist, but in container deploy they should point to fixed in-image paths.
+Inference runs in the browser (ONNX); the backend image has no KataGo binary.
 
 ## State and scaling implications
 
@@ -106,7 +122,7 @@ For MVP (10 users initial, up to ~50 concurrent peak), keep single task and moni
 
 ## Sizing and latency guidance (cost-first)
 
-See **[cloud-env-and-sizing.md](cloud-env-and-sizing.md)** for ECS CPU/memory tables, `KATAGO_ANALYSIS_TIMEOUT_SECONDS` by load, and tuning order. Summary: start around `2 vCPU / 4 GB RAM`, keep `desiredCount=1`, raise analysis timeout before scaling CPU; KataGo queries are queue-based, not parallel per request.
+See **[cloud-env-and-sizing.md](cloud-env-and-sizing.md)** for ECS CPU/memory starting points. Summary: start around `0.5`–`1` vCPU and `512 MB`–`1 GB` RAM, keep `desiredCount=1`; heavy inference is client-side ONNX.
 
 ## Manual deploy flow (MVP)
 

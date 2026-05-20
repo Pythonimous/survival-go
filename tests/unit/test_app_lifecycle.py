@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -11,18 +9,8 @@ from backend.app.game_service import InMemoryGameService
 
 
 @pytest.mark.unit
-def test_app_shutdown_stops_game_service_katago_clients() -> None:
-    clients: list[Mock] = []
-
-    def factory() -> Mock:
-        client = Mock()
-        clients.append(client)
-        return client
-
-    game_service = InMemoryGameService(
-        survival_threshold=0.95,
-        katago_client_factory=factory,
-    )
+def test_app_shutdown_clears_game_service_sessions() -> None:
+    game_service = InMemoryGameService(survival_threshold=0.95)
     from backend.app.main import create_app
 
     with TestClient(create_app(game_service=game_service)) as client:
@@ -31,6 +19,7 @@ def test_app_shutdown_stops_game_service_katago_clients() -> None:
             json={"preset_id": "balanced", "human_side": "W"},
         )
         assert response.status_code == 201
+        game_id = response.json()["game_id"]
+        assert game_service.get_game(game_id).game_id == game_id
 
-    assert clients
-    assert all(mock_client.stop.called for mock_client in clients)
+    assert not game_service._games

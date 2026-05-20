@@ -17,7 +17,7 @@ from backend.app.engine.board import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
-COORDINATES_MODULE = FRONTEND_DIR / "src" / "lib" / "coordinates.ts"
+COORDINATES_MODULE = FRONTEND_DIR / "src" / "lib" / "go" / "coordinates.ts"
 COORDINATE_CLI = FRONTEND_DIR / "scripts" / "coordinate_cli.ts"
 BOARD_SIZE = 19
 GTP_COLUMNS = "ABCDEFGHJKLMNOPQRST"

@@ -258,12 +258,12 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 
 | Knob | Where |
 |------|--------|
-| KataGo timeout under load | `KATAGO_ANALYSIS_TIMEOUT_SECONDS` in `docker-compose.yml` (e.g. `60`) |
+| Survival defaults | `SURVIVAL_THRESHOLD`, `DEFAULT_TOP_N` in compose env if needed |
 | More CPU/RAM | Change instance type → stop instance → change type → start |
 | Disk full | `docker system prune` (careful) or enlarge volume |
 | Restart everything | `docker compose -f docker-compose.yml -f docker-compose.prod.yml restart` |
 
-**Sessions:** Games live in backend memory. Rebooting the VM ends in-progress games (same as local). One KataGo process per server — see [shared-katago-engine.md](shared-katago-engine.md).
+**Sessions:** Games live in backend memory. Rebooting the VM ends in-progress games (same as local). Engine inference runs in each user's browser (ONNX).
 
 **Security basics:** SSH restricted to your IP; app listens on localhost **9080** only; keep Ubuntu updated (`sudo apt upgrade`).
 
@@ -273,15 +273,14 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 
 | Symptom | What to check |
 |---------|----------------|
-| Docker frontend build: `Cannot find module '../lib/api'` | `frontend/src/lib/` was missing from git (old `.gitignore` had `lib/`). Pull latest repo; confirm `ls frontend/src/lib/api.ts` exists before build. |
+| Docker frontend build: `Cannot find module '../lib/api'` | `frontend/src/lib/` was missing from git (old `.gitignore` had `lib/`). Pull latest repo; confirm `ls frontend/src/lib/api/client.ts` exists before build. |
 | `failed to bind host port ... address already in use` | `docker compose ... down`, then `sudo ss -tlnp \| grep -E '8080|9080'`. Prod uses **9080** only; do not run local compose (8080) on the same VM. |
 | SSH timeout | Security group allows 22 from your current IP; instance running |
 | `curl 127.0.0.1:9080` fails | `docker compose logs backend`; first build still running |
-| Backend restart loop | Usually KataGo paths or OOM → try `t3.large` |
+| Backend restart loop | Check `docker compose logs backend`; OOM → try larger instance |
 | HTTPS certificate fails | DNS A record points to Elastic IP; ports 80/443 open |
-| Site loads, engine times out | Raise `KATAGO_ANALYSIS_TIMEOUT_SECONDS` |
-| Instant `failed to analyze game with KataGo`; stderr `fuse: device not found` | Rebuild backend image on latest repo (`setup_katago.sh` extracts AppImage without FUSE) |
-| Out of disk on first build | 30 GiB minimum; KataGo + model are large |
+| Site loads, engine never moves | Browser console; ONNX models in frontend build ([onnx-model-artifacts.md](onnx-model-artifacts.md)) |
+| Out of disk on first build | 30 GiB minimum; frontend image includes ONNX artifacts |
 
 ---
 

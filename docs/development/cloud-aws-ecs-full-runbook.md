@@ -383,12 +383,8 @@ Image env paths (already in image; set again on ECS task):
 
 | Variable | Value |
 |----------|--------|
-| `KATAGO_BINARY_PATH` | `/opt/katago/katago` |
-| `KATAGO_CONFIG_PATH` | `/app/third_party/katago/analysis.docker.cfg` |
-| `KATAGO_MODEL_PATH` | `/opt/katago/kata1-b20c256x2-s4384473088-d968438914.bin.gz` |
-| `KATAGO_ANALYSIS_TIMEOUT_SECONDS` | `60` |
-| `KATAGO_TOP_N` | `8` |
 | `SURVIVAL_THRESHOLD` | `0.95` |
+| `DEFAULT_TOP_N` | `8` |
 | `CORS_ALLOW_ORIGINS` | `https://app.<your-domain>` (replace domain) |
 
 ---
@@ -505,7 +501,7 @@ Create → copy **DNS name** (e.g. `survival-go-api-alb-123.us-east-1.elb.amazon
 | Name | `api` |
 | Image URI | `${ECR_REGISTRY}:${IMAGE_TAG}` (paste real values) |
 | Port | 8000 TCP |
-| Environment | all `KATAGO_*`, `SURVIVAL_THRESHOLD`, `CORS_ALLOW_ORIGINS` from §4.3 |
+| Environment | `SURVIVAL_THRESHOLD`, `DEFAULT_TOP_N`, `CORS_ALLOW_ORIGINS` from §4.3 |
 | Log configuration | `awslogs` → group `/ecs/survival-go-api` → stream prefix `ecs` |
 | Health check (optional) | CMD curl localhost:8000/health or rely on ALB |
 

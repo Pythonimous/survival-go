@@ -86,6 +86,14 @@ def _check_analyze(ctx: _SmokeContext) -> None:
     game_id = _create_smoke_game(ctx)
     response = ctx.client.post(
         f"{ctx.base_url}/api/games/{game_id}/analyze",
+        json={
+            "raw_model_outputs": {
+                "policy": [0.0] * ((19 * 19 + 1) * 6),
+                "ownership": [-0.2] + [1.0] * 360,
+                "value": [0.0, 0.0, 0.0],
+                "miscvalue": [0.0] * 10,
+            }
+        },
         timeout=ctx.timeout_seconds,
     )
     if response.status_code != 200:

@@ -1,7 +1,5 @@
 """Unit tests for backend environment settings."""
 
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
@@ -15,49 +13,19 @@ def _clear_settings_cache() -> None:
     reset_settings_cache()
 
 
-@pytest.fixture
-def katago_paths(tmp_path: Path) -> dict[str, str]:
-    binary = tmp_path / "katago"
-    binary.write_text("#!/bin/sh\n", encoding="utf-8")
-    binary.chmod(0o755)
-    config = tmp_path / "analysis.cfg"
-    config.write_text("numSearchThreads = 1\n", encoding="utf-8")
-    model = tmp_path / "model.bin.gz"
-    model.write_bytes(b"fake-model")
-    return {
-        "KATAGO_BINARY_PATH": str(binary),
-        "KATAGO_CONFIG_PATH": str(config),
-        "KATAGO_MODEL_PATH": str(model),
-    }
-
-
-def _set_katago_env(monkeypatch: pytest.MonkeyPatch, paths: dict[str, str]) -> None:
-    for key, value in paths.items():
-        monkeypatch.setenv(key, value)
-
-
 @pytest.mark.unit
-def test_settings_loads_required_paths_and_defaults(
-    monkeypatch: pytest.MonkeyPatch, katago_paths: dict[str, str]
-) -> None:
-    _set_katago_env(monkeypatch, katago_paths)
-
+def test_settings_loads_defaults() -> None:
     settings = Settings()
 
-    assert settings.katago_binary_path.is_file()
-    assert settings.katago_config_path.is_file()
-    assert settings.katago_model_path.is_file()
     assert settings.survival_threshold == pytest.approx(0.95)
-    assert settings.katago_top_n == 8
-    assert settings.katago_analysis_timeout_seconds == pytest.approx(30.0)
+    assert settings.default_top_n == 8
     assert "http://localhost:5173" in settings.cors_allow_origins
 
 
 @pytest.mark.unit
 def test_settings_parses_cors_allow_origins_from_comma_separated_env(
-    monkeypatch: pytest.MonkeyPatch, katago_paths: dict[str, str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_katago_env(monkeypatch, katago_paths)
     monkeypatch.setenv(
         "CORS_ALLOW_ORIGINS",
         "https://app.example.com, https://app.example.org",
@@ -72,45 +40,14 @@ def test_settings_parses_cors_allow_origins_from_comma_separated_env(
 
 
 @pytest.mark.unit
-def test_settings_accepts_overrides(
-    monkeypatch: pytest.MonkeyPatch, katago_paths: dict[str, str]
-) -> None:
-    _set_katago_env(monkeypatch, katago_paths)
+def test_settings_accepts_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SURVIVAL_THRESHOLD", "0.9")
-    monkeypatch.setenv("KATAGO_TOP_N", "12")
-    monkeypatch.setenv("KATAGO_ANALYSIS_TIMEOUT_SECONDS", "45")
+    monkeypatch.setenv("DEFAULT_TOP_N", "12")
 
     settings = Settings()
 
     assert settings.survival_threshold == pytest.approx(0.9)
-    assert settings.katago_top_n == 12
-    assert settings.katago_analysis_timeout_seconds == pytest.approx(45.0)
-
-
-@pytest.mark.unit
-def test_settings_rejects_missing_required_env(
-    monkeypatch: pytest.MonkeyPatch, katago_paths: dict[str, str]
-) -> None:
-    _set_katago_env(monkeypatch, katago_paths)
-    monkeypatch.delenv("KATAGO_MODEL_PATH", raising=False)
-
-    with pytest.raises(ValidationError) as exc_info:
-        Settings(_env_file=None)
-
-    assert "KATAGO_MODEL_PATH" in str(exc_info.value)
-
-
-@pytest.mark.unit
-def test_settings_rejects_missing_file_on_disk(
-    monkeypatch: pytest.MonkeyPatch, katago_paths: dict[str, str]
-) -> None:
-    _set_katago_env(monkeypatch, katago_paths)
-    monkeypatch.setenv("KATAGO_MODEL_PATH", "/no/such/model.bin.gz")
-
-    with pytest.raises(ValidationError) as exc_info:
-        Settings()
-
-    assert "does not exist" in str(exc_info.value).lower()
+    assert settings.default_top_n == 12
 
 
 @pytest.mark.unit
@@ -119,17 +56,14 @@ def test_settings_rejects_missing_file_on_disk(
     [
         ("SURVIVAL_THRESHOLD", "0"),
         ("SURVIVAL_THRESHOLD", "1.5"),
-        ("KATAGO_TOP_N", "0"),
-        ("KATAGO_ANALYSIS_TIMEOUT_SECONDS", "-1"),
+        ("DEFAULT_TOP_N", "0"),
     ],
 )
 def test_settings_rejects_invalid_numeric_values(
     monkeypatch: pytest.MonkeyPatch,
-    katago_paths: dict[str, str],
     env_name: str,
     value: str,
 ) -> None:
-    _set_katago_env(monkeypatch, katago_paths)
     monkeypatch.setenv(env_name, value)
 
     with pytest.raises(ValidationError):
@@ -137,11 +71,7 @@ def test_settings_rejects_invalid_numeric_values(
 
 
 @pytest.mark.unit
-def test_get_settings_is_cached(
-    monkeypatch: pytest.MonkeyPatch, katago_paths: dict[str, str]
-) -> None:
-    _set_katago_env(monkeypatch, katago_paths)
-
+def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     first = get_settings()
     second = get_settings()
 
@@ -149,14 +79,11 @@ def test_get_settings_is_cached(
 
 
 @pytest.mark.unit
-def test_create_app_fails_fast_without_required_env(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_create_app_starts_without_katago_env(monkeypatch: pytest.MonkeyPatch) -> None:
     import importlib
     import sys
 
     reset_settings_cache()
-    monkeypatch.chdir(tmp_path)
     for key in (
         "KATAGO_BINARY_PATH",
         "KATAGO_CONFIG_PATH",
@@ -165,5 +92,5 @@ def test_create_app_fails_fast_without_required_env(
         monkeypatch.delenv(key, raising=False)
 
     sys.modules.pop("backend.app.main", None)
-    with pytest.raises(ValidationError):
-        importlib.import_module("backend.app.main")
+    module = importlib.import_module("backend.app.main")
+    assert module.create_app() is not None

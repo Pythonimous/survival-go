@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post-deploy API smoke checks (health, presets, optional KataGo analyze)."""
+"""Post-deploy API smoke checks (health, presets, optional analyze payload)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--with-analyze",
         action="store_true",
-        help="Also create a game and POST /analyze (uses KataGo; slower)",
+        help="Also create a game and POST /analyze with sample raw_model_outputs",
     )
     parser.add_argument(
         "--timeout",

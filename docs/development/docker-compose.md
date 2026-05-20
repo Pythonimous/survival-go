@@ -1,13 +1,13 @@
 # Docker Compose (optional local packaging)
 
-Run the full stack in containers without installing Python, Node, or KataGo on the host. This is optional; for day-to-day development, use [local-run.md](local-run.md).
+Run the full stack in containers without installing Python or Node on the host. Inference runs in the **browser** (ONNX); the backend container is API-only.
 
 ## What you get
 
 | Service | Role |
 |---------|------|
-| `backend` | FastAPI + one shared KataGo subprocess (`analysis.docker.cfg`) |
-| `frontend` | Built React app behind nginx; proxies `/api` and `/health` to the backend |
+| `backend` | FastAPI (game state, Survival semantics) |
+| `frontend` | Built React app + nginx; proxies `/api` and `/health` to the backend |
 
 Open **http://127.0.0.1:8080/** after:
 
@@ -17,100 +17,54 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 
 ## Prerequisites
 
-- **Docker** and **Docker Compose** v2 (`docker compose` command)
-- ~2 GB free disk for image layers (includes KataGo binary + model download at build time)
-- Network access during **first build** (downloads KataGo release and neural net)
+- **Docker** and **Docker Compose** v2
+- ONNX artifacts baked into the frontend image build (`frontend/public/models/`) — see [onnx-model-artifacts.md](onnx-model-artifacts.md)
 
 ## Quick start
-
-From the repo root:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 ```
 
-First build can take several minutes (KataGo + model + `npm ci`).
-
-Verify (`GET /health` via nginx proxy):
+Verify (`GET /health` and presets via nginx):
 
 ```bash
 curl http://127.0.0.1:8080/health
 curl http://127.0.0.1:8080/api/presets
 ```
 
-Stop: `Ctrl+C`, then optionally `docker compose down`.
-
 ## Configuration
 
-Default paths and timeouts are set in `docker-compose.yml` and baked into `docker/backend/Dockerfile`. Reference copy: [`.env.docker.example`](../../.env.docker.example). Full variable reference and production-safe defaults: [environment.md](environment.md).
+Optional backend overrides: [`.env.docker.example`](../../.env.docker.example). Full reference: [environment.md](environment.md).
 
-| Variable | Container value |
-|----------|-----------------|
-| `KATAGO_BINARY_PATH` | `/opt/katago/katago` |
-| `KATAGO_CONFIG_PATH` | `/app/third_party/katago/analysis.docker.cfg` |
-| `KATAGO_MODEL_PATH` | `/opt/katago/kata1-b20c256x2-s4384473088-d968438914.bin.gz` |
-| `KATAGO_ANALYSIS_TIMEOUT_SECONDS` | `45` (queued load; see [katago-docker.md](katago-docker.md)) |
-
-To override, add an `environment:` block under `backend` in `docker-compose.yml` or use a compose env file.
-
-Thread and timeout tuning for containers: [katago-docker.md](katago-docker.md). Shared-engine behavior (queueing, sessions): [shared-katago-engine.md](shared-katago-engine.md).
-
-## Manual validation
-
-Same checklist as [local-run.md](local-run.md) (presets, play a move, engine move, metrics), but use port **8080** instead of 5173.
-
-## Rebuild after code changes
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
-```
-
-Rebuild only one service:
-
-```bash
-docker compose build backend
-docker compose build frontend
-```
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `SURVIVAL_THRESHOLD` | `0.95` | Survival scoring |
+| `DEFAULT_TOP_N` | `8` | Default engine shortlist |
 
 ## Troubleshooting
 
 | Symptom | What to check |
 |---------|----------------|
-| Build fails downloading KataGo | Network; GitHub and katagotraining.org reachable |
-| `backend` unhealthy / restarts | `docker compose logs backend`; KataGo paths inside image |
 | Presets fail in UI | `curl http://127.0.0.1:8080/health` and `/api/presets` |
-| Engine move timeout | Raise `KATAGO_ANALYSIS_TIMEOUT_SECONDS` in compose |
-| Port 8080 in use | Change host port in `docker-compose.local.yml` (e.g. `"127.0.0.1:3000:80"`) |
+| Engine never responds | Browser console; ONNX model load ([browser-inference-design.md](browser-inference-design.md)) |
+| Port 8080 in use | Change host port in `docker-compose.local.yml` |
 
-Games are in-memory; `docker compose down` clears sessions. One KataGo process serves all games (see [shared-katago-engine.md](shared-katago-engine.md)).
+Games are in-memory; `docker compose down` clears sessions.
 
 ## Files
 
 | Path | Purpose |
 |------|---------|
 | `docker-compose.yml` | Service definitions and healthcheck |
-| `docker-compose.local.yml` | Publish UI on `127.0.0.1:8080` (laptop / local) |
-| `docker-compose.prod.yml` | Publish UI on `127.0.0.1:9080` for Caddy on a VM (not 8080) |
-| `docker/backend/Dockerfile` | Python app + `setup_katago.sh` at build |
+| `docker-compose.local.yml` | Publish UI on `127.0.0.1:8080` |
+| `docker-compose.prod.yml` | Publish UI on `127.0.0.1:9080` for Caddy on a VM |
+| `docker/backend/Dockerfile` | Python API only |
 | `docker/frontend/Dockerfile` | Vite build + nginx |
 | `docker/frontend/nginx.conf` | Static assets + API proxy |
-| `.dockerignore` | Keeps local `.venv`, `node_modules`, host KataGo artifacts out of context |
-
-## Production on one cloud VM
-
-Bind to localhost and put Caddy (or nginx) in front for HTTPS:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-```
-
-Full steps (EC2, Elastic IP, Namecheap DNS): [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md).
 
 ## See also
 
-- [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md) — recommended AWS path (one server)
-- [cloud-backend-container.md](cloud-backend-container.md) — same backend image for ECR/ECS deploy
-- [environment.md](environment.md) — all env vars, defaults, and safe overrides
-- [local-run.md](local-run.md) — native dev run (venv + npm)
-- [katago-docker.md](katago-docker.md) — analysis config and timeouts
-- [katago-wsl-linux.md](katago-wsl-linux.md) — host KataGo install (non-Docker)
+- [local-run.md](local-run.md) — native dev run
+- [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md) — one-VM deploy
+- [browser-inference-design.md](browser-inference-design.md) — ONNX architecture

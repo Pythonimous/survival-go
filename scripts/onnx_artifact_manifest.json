@@ -1,0 +1,33 @@
+{
+  "model": "kaya-go/kaya",
+  "version": "v0.2.2",
+  "artifact_prefix": "kata1-b28c512nbt-s12043015936-d5616446734",
+  "source": {
+    "provider": "huggingface",
+    "repo_api_url": "https://huggingface.co/api/models/kaya-go/kaya?blobs=true",
+    "repo_resolve_base_url": "https://huggingface.co/kaya-go/kaya/resolve/main/kata1-b28c512nbt-s12043015936-d5616446734"
+  },
+  "artifacts": [
+    {
+      "variant": "fp32",
+      "filename": "kata1-b28c512nbt-s12043015936-d5616446734.fp32.onnx",
+      "relative_path": "kata1-b28c512nbt-s12043015936-d5616446734/kata1-b28c512nbt-s12043015936-d5616446734.fp32.onnx",
+      "size_bytes": 293099607,
+      "sha256": "7650e93519e515bb165b1d2ff3510a9671e74c45945a273321185f8dc96daa6b"
+    },
+    {
+      "variant": "fp16",
+      "filename": "kata1-b28c512nbt-s12043015936-d5616446734.fp16.onnx",
+      "relative_path": "kata1-b28c512nbt-s12043015936-d5616446734/kata1-b28c512nbt-s12043015936-d5616446734.fp16.onnx",
+      "size_bytes": 146963282,
+      "sha256": "727c6bf9fa1595efa83eb6b4627ddfab974aa33c9adb02245c8ec757009058f6"
+    },
+    {
+      "variant": "uint8",
+      "filename": "kata1-b28c512nbt-s12043015936-d5616446734.uint8.onnx",
+      "relative_path": "kata1-b28c512nbt-s12043015936-d5616446734/kata1-b28c512nbt-s12043015936-d5616446734.uint8.onnx",
+      "size_bytes": 75176896,
+      "sha256": "2b9247ea55433a8e4308ba6ed4f49159736b1314978c89b24668f2b4a91ed23c"
+    }
+  ]
+}

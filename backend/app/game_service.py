@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import copy
 import random
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
+from math import exp
 from typing import Literal, Protocol
 from uuid import uuid4
 
@@ -13,7 +14,6 @@ from sgfmill import boards
 
 from backend.app.engine.board import (
     StoneColor,
-    from_sgfmill_color,
     format_gtp_coordinate,
     parse_gtp_coordinate,
     to_sgfmill_color,
@@ -26,12 +26,10 @@ from backend.app.engine.evaluator import (
 from backend.app.engine.resignation import should_engine_resign
 from backend.app.engine.move_selector import (
     CandidateMove,
-    filter_blunders,
     rank_candidates_for_side,
     select_candidate_for_side,
 )
 from backend.app.difficulty import DifficultyConfig
-from backend.app.katago.client import KataGoMoveInfo
 from backend.app.presets.loader import (
     PresetLoadError,
     get_preset_by_id,
@@ -60,34 +58,32 @@ class EngineMoveResult:
     metrics: SurvivalMetrics
     candidates: list[CandidateMove]
     resigned: bool = False
+    winrate: float | None = None
+    score_lead: float | None = None
 
 
-class KataGoAnalyzer(Protocol):
-    """Protocol for KataGo analysis used by game orchestration."""
+@dataclass(frozen=True, slots=True)
+class AnalysisResult:
+    """Canonical analysis contract returned to API handlers."""
 
-    def get_candidate_moves(
-        self,
-        *,
-        query_id: str,
-        initial_stones: Sequence[tuple[StoneColor, str]],
-        moves: Sequence[tuple[StoneColor, str]],
-        initial_player: StoneColor,
-        board_size: int,
-        max_visits: int,
-        komi: float = 7.5,
-    ) -> list[KataGoMoveInfo]: ...
+    survival_score: int
+    metrics: SurvivalMetrics
+    policy: list[float] | None = None
+    p_black: list[float] | None = None
+    score_lead: float | None = None
+    winrate: float | None = None
 
-    def analyze_position(
-        self,
-        *,
-        query_id: str,
-        initial_stones: Sequence[tuple[StoneColor, str]],
-        moves: Sequence[tuple[StoneColor, str]],
-        initial_player: StoneColor,
-        board_size: int,
-        max_visits: int,
-        komi: float = 7.5,
-    ) -> list[float]: ...
+
+@dataclass(frozen=True, slots=True)
+class BrowserEngineMoveCandidate:
+    """Browser-provided candidate move plus raw model outputs."""
+
+    move: str
+    policy_prob: float
+    policy: Sequence[float]
+    ownership: Sequence[float]
+    value: Sequence[float] | None = None
+    miscvalue: Sequence[float] | None = None
 
 
 class RandomSource(Protocol):
@@ -130,12 +126,6 @@ class GameState:
         return points
 
 
-def _stop_katago_client(client: KataGoAnalyzer) -> None:
-    stop = getattr(client, "stop", None)
-    if callable(stop):
-        stop()
-
-
 class InMemoryGameService:
     """Game lifecycle orchestration backed by process memory."""
 
@@ -143,19 +133,16 @@ class InMemoryGameService:
         self,
         *,
         survival_threshold: float,
-        katago_client_factory: Callable[[], KataGoAnalyzer] | None = None,
-        katago_max_visits: int = 20,
-        katago_top_n: int = 8,
+        default_max_visits: int = 20,
+        default_top_n: int = 8,
         random_source: RandomSource | None = None,
     ) -> None:
-        if katago_top_n < 1:
-            raise ValueError("katago_top_n must be at least 1")
+        if default_top_n < 1:
+            raise ValueError("default_top_n must be at least 1")
         self._games: dict[str, GameState] = {}
-        self._katago_client: KataGoAnalyzer | None = None
         self._survival_threshold = survival_threshold
-        self._katago_client_factory = katago_client_factory
-        self._katago_max_visits = katago_max_visits
-        self._katago_top_n = katago_top_n
+        self._default_max_visits = default_max_visits
+        self._default_top_n = default_top_n
         self._random_source = random_source or random.Random()
 
     def list_presets(self) -> list[dict[str, object]]:
@@ -188,7 +175,6 @@ class InMemoryGameService:
             difficulty=(difficulty or self._default_difficulty()).model_copy(deep=True),
         )
         self._games[game_id] = game
-        self._ensure_katago_client()
         return game
 
     def delete_game(self, game_id: str) -> None:
@@ -197,9 +183,6 @@ class InMemoryGameService:
             raise GameNotFoundError(f"game not found: {game_id}")
 
     def shutdown(self) -> None:
-        if self._katago_client is not None:
-            _stop_katago_client(self._katago_client)
-            self._katago_client = None
         self._games.clear()
 
     def get_game(self, game_id: str) -> GameState:
@@ -227,21 +210,66 @@ class InMemoryGameService:
         game.next_to_move = game.engine_side
         return game
 
-    def apply_engine_move(self, *, game_id: str) -> EngineMoveResult:
+    def apply_engine_move_from_browser_payload(
+        self,
+        *,
+        game_id: str,
+        position_policy: Sequence[float],
+        position_ownership: Sequence[float],
+        position_value: Sequence[float] | None,
+        position_miscvalue: Sequence[float] | None,
+        candidates: Sequence[BrowserEngineMoveCandidate],
+    ) -> EngineMoveResult:
         game = self.get_game(game_id)
         if game.status == "finished":
             raise GameServiceError("game is already finished")
         if game.next_to_move != game.engine_side:
             raise GameServiceError("it is not the engine side turn")
 
-        position = self._analyze_current_position(game)
+        root = self.analyze_raw_model_outputs(
+            game_id=game_id,
+            policy=position_policy,
+            ownership=position_ownership,
+            value=position_value,
+            miscvalue=position_miscvalue,
+        )
+        root_evaluation = SurvivalEvaluation(
+            survival_score=root.survival_score,
+            metrics=root.metrics,
+        )
         if should_engine_resign(
             engine_side=game.engine_side,
-            min_black_probability=position.metrics.min_black_probability,
+            min_black_probability=root.metrics.min_black_probability,
         ):
-            return self._engine_resign(game, evaluation=position)
+            return self._engine_resign(
+                game,
+                evaluation=root_evaluation,
+                winrate=root.winrate,
+                score_lead=root.score_lead,
+            )
 
-        candidates = self._ranked_candidates(game)
+        browser_candidates = self._ranked_candidates_from_browser_payload(
+            game=game,
+            candidates=candidates,
+        )
+        return self._finalize_engine_move_from_candidates(
+            game=game,
+            candidates=browser_candidates,
+            root_metrics=root.metrics,
+            root_winrate=root.winrate,
+            root_score_lead=root.score_lead,
+        )
+
+    def _finalize_engine_move_from_candidates(
+        self,
+        *,
+        game: GameState,
+        candidates: list[CandidateMove],
+        root_metrics: SurvivalMetrics | None = None,
+        root_winrate: float | None = None,
+        root_score_lead: float | None = None,
+    ) -> EngineMoveResult:
+        # Browser sends top MCTS candidates; backend reranks by winrate + policy/score priors.
         ranked = rank_candidates_for_side(
             candidates,
             engine_side=game.engine_side,
@@ -249,56 +277,99 @@ class InMemoryGameService:
         )
         ranked_shortlist = ranked[: min(self._game_top_n(game), len(ranked))]
         selected = self._select_engine_move(ranked_shortlist, game=game)
-        filtered_shortlist = filter_blunders(
-            ranked_shortlist,
-            engine_side=game.engine_side,
-            difficulty=game.difficulty,
-        )
         self._play_move(game, move=selected.move, side=game.engine_side)
         game.next_to_move = game.human_side
         return EngineMoveResult(
             game=game,
             move=selected.move,
             survival_score=selected.survival_score,
-            metrics=SurvivalMetrics(
+            metrics=root_metrics or SurvivalMetrics(
                 unresolved_count=selected.survival_score,
                 min_black_probability=selected.min_black_probability,
             ),
-            candidates=filtered_shortlist,
+            candidates=ranked_shortlist,
+            winrate=root_winrate,
+            score_lead=root_score_lead,
         )
 
-    def analyze_game(self, *, game_id: str) -> SurvivalEvaluation:
+    def _ranked_candidates_from_browser_payload(
+        self,
+        *,
+        game: GameState,
+        candidates: Sequence[BrowserEngineMoveCandidate],
+    ) -> list[CandidateMove]:
+        resolved: list[CandidateMove] = []
+        for candidate in candidates:
+            if not self._is_legal_candidate_move(
+                game,
+                move=candidate.move,
+                side=game.engine_side,
+            ):
+                continue
+            resolved.append(self._candidate_move_from_browser_stats(candidate))
+        if not resolved:
+            raise GameServiceError("no legal engine moves available")
+        return resolved
+
+    def _candidate_move_from_browser_stats(
+        self, candidate: BrowserEngineMoveCandidate
+    ) -> CandidateMove:
+        """Build a ranked candidate from root MCTS stats (policy / winrate / score)."""
+        return CandidateMove(
+            move=candidate.move,
+            survival_score=0,
+            min_black_probability=0.5,
+            policy=candidate.policy_prob,
+            score_lead=_extract_score_lead(candidate.miscvalue),
+            winrate=_extract_winrate(candidate.value),
+        )
+
+    def analyze_raw_model_outputs(
+        self,
+        *,
+        game_id: str,
+        policy: Sequence[float],
+        ownership: Sequence[float],
+        value: Sequence[float] | None = None,
+        miscvalue: Sequence[float] | None = None,
+    ) -> AnalysisResult:
         game = self.get_game(game_id)
-        return self._analyze_current_position(game)
-
-    def _ensure_katago_client(self) -> None:
-        if self._katago_client_factory is None:
-            return
-        if self._katago_client is None:
-            self._katago_client = self._katago_client_factory()
-
-    def _katago_for_game(self) -> KataGoAnalyzer:
-        client = self._katago_client
-        if client is None:
-            raise GameServiceError("KataGo client is not configured for this game")
-        return client
-
-    def _analyze_current_position(self, game: GameState) -> SurvivalEvaluation:
-        try:
-            p_black = self._katago_for_game().analyze_position(
-                query_id=f"analyze-{game.game_id}",
-                initial_stones=self._board_as_initial_stones(game.board),
-                moves=[],
-                initial_player=game.next_to_move,
-                board_size=game.board.side,
-                max_visits=self._game_max_visits(game),
+        expected_points = game.board.side * game.board.side
+        expected_policy_points = expected_points + 1
+        if len(policy) < expected_policy_points:
+            raise GameServiceError(
+                "raw policy length "
+                f"{len(policy)} is below required points {expected_policy_points}"
             )
-        except Exception as exc:
-            raise GameServiceError("failed to analyze game with KataGo") from exc
-        return evaluate_survival_position(p_black, threshold=self._survival_threshold)
+        if len(ownership) != expected_points:
+            raise GameServiceError(
+                "raw ownership length "
+                f"{len(ownership)} does not match board points {expected_points}"
+            )
+        if miscvalue is not None and len(miscvalue) != 10:
+            raise GameServiceError(
+                "raw miscvalue length "
+                f"{len(miscvalue)} does not match required length 10"
+            )
+        policy_probs = _softmax([float(item) for item in policy[:expected_policy_points]])
+        p_black = _ownership_to_p_black(ownership)
+        evaluation = evaluate_survival_position(p_black, threshold=self._survival_threshold)
+        return AnalysisResult(
+            survival_score=evaluation.survival_score,
+            metrics=evaluation.metrics,
+            policy=policy_probs,
+            p_black=p_black,
+            score_lead=_extract_score_lead(miscvalue),
+            winrate=_extract_winrate(value),
+        )
 
     def _engine_resign(
-        self, game: GameState, *, evaluation: SurvivalEvaluation
+        self,
+        game: GameState,
+        *,
+        evaluation: SurvivalEvaluation,
+        winrate: float | None = None,
+        score_lead: float | None = None,
     ) -> EngineMoveResult:
         game.status = "finished"
         game.winner = game.human_side
@@ -310,52 +381,21 @@ class InMemoryGameService:
             metrics=evaluation.metrics,
             candidates=[],
             resigned=True,
+            winrate=winrate,
+            score_lead=score_lead,
         )
 
-    def _ranked_candidates(self, game: GameState) -> list[CandidateMove]:
-        side = game.engine_side
-        initial_stones = self._board_as_initial_stones(game.board)
-        candidate_moves = self._fetch_engine_candidate_moves(game, initial_stones=initial_stones)
-
-        candidates: list[CandidateMove] = []
-        for move_info in candidate_moves:
-            if not self._is_legal_candidate_move(game, move=move_info.move, side=side):
-                continue
-            evaluation = self._evaluate_engine_candidate(
-                game,
-                move=move_info.move,
-                side=side,
-                initial_stones=initial_stones,
-            )
-            candidates.append(
-                CandidateMove(
-                    move=move_info.move,
-                    survival_score=evaluation.survival_score,
-                    min_black_probability=evaluation.metrics.min_black_probability,
-                    policy=move_info.policy,
-                    score_lead=move_info.score_lead,
-                )
-            )
-
-        if not candidates:
-            raise GameServiceError("no legal engine moves available")
-        return candidates
-
-    def _fetch_engine_candidate_moves(
-        self, game: GameState, *, initial_stones: Sequence[tuple[StoneColor, str]]
-    ) -> list[KataGoMoveInfo]:
-        try:
-            moves = self._katago_for_game().get_candidate_moves(
-                query_id=f"engine-candidates-{game.game_id}",
-                initial_stones=initial_stones,
-                moves=[],
-                initial_player=game.engine_side,
-                board_size=game.board.side,
-                max_visits=self._game_max_visits(game),
-            )
-            return moves
-        except Exception as exc:
-            raise GameServiceError("failed to fetch engine move candidates from KataGo") from exc
+    def legal_moves_for_side(self, game: GameState, *, side: StoneColor) -> list[str]:
+        """Return every legal GTP move for ``side`` on the current board."""
+        legal: list[str] = []
+        for row in range(game.board.side):
+            for col in range(game.board.side):
+                if game.board.get(row, col) is not None:
+                    continue
+                move = format_gtp_coordinate(row, col, size=game.board.side)
+                if self._is_legal_candidate_move(game, move=move, side=side):
+                    legal.append(move)
+        return legal
 
     def _is_legal_candidate_move(self, game: GameState, *, move: str, side: StoneColor) -> bool:
         try:
@@ -371,27 +411,6 @@ class InMemoryGameService:
             return False
         return True
 
-    def _evaluate_engine_candidate(
-        self,
-        game: GameState,
-        *,
-        move: str,
-        side: StoneColor,
-        initial_stones: Sequence[tuple[StoneColor, str]],
-    ) -> SurvivalEvaluation:
-        try:
-            p_black = self._katago_for_game().analyze_position(
-                query_id=f"engine-eval-{game.game_id}-{move}",
-                initial_stones=initial_stones,
-                moves=[(side, move)],
-                initial_player=side,
-                board_size=game.board.side,
-                max_visits=self._game_max_visits(game),
-            )
-        except Exception as exc:
-            raise GameServiceError("failed to evaluate engine candidates with KataGo") from exc
-        return evaluate_survival_position(p_black, threshold=self._survival_threshold)
-
     def _play_move(self, game: GameState, *, move: str, side: StoneColor) -> None:
         row, col = parse_gtp_coordinate(move, size=game.board.side)
         try:
@@ -400,9 +419,6 @@ class InMemoryGameService:
             raise GameServiceError(f"illegal move: {move}") from exc
         game.moves_played += 1
         game.last_move = move
-
-    def _game_max_visits(self, game: GameState) -> int:
-        return game.difficulty.max_visits
 
     def _game_top_n(self, game: GameState) -> int:
         return game.difficulty.top_n
@@ -422,23 +438,37 @@ class InMemoryGameService:
 
     def _default_difficulty(self) -> DifficultyConfig:
         return DifficultyConfig(
-            max_visits=self._katago_max_visits,
-            top_n=self._katago_top_n,
+            max_visits=self._default_max_visits,
+            top_n=self._default_top_n,
             randomness=0.0,
             temperature=0.0,
         )
 
-    def _board_as_initial_stones(self, board: boards.Board) -> list[tuple[StoneColor, str]]:
-        initial_stones: list[tuple[StoneColor, str]] = []
-        for row in range(board.side):
-            for col in range(board.side):
-                color = board.get(row, col)
-                if color is None:
-                    continue
-                initial_stones.append(
-                    (
-                        from_sgfmill_color(color),
-                        format_gtp_coordinate(row, col, size=board.side),
-                    )
-                )
-        return initial_stones
+
+def _raw_ownership_to_p_black(value: float) -> float:
+    return max(0.0, min(1.0, (value + 1.0) / 2.0))
+
+
+def _ownership_to_p_black(ownership: Sequence[float]) -> list[float]:
+    """Convert Kaya/model raw ownership in [-1, 1] into Black probabilities."""
+    return [_raw_ownership_to_p_black(float(item)) for item in ownership]
+
+
+def _softmax(values: Sequence[float]) -> list[float]:
+    max_value = max(values)
+    exps = [exp(item - max_value) for item in values]
+    total = sum(exps)
+    return [item / total for item in exps]
+
+
+def _extract_winrate(value: Sequence[float] | None) -> float | None:
+    if value is None or len(value) < 3:
+        return None
+    probs = _softmax([float(value[0]), float(value[1]), float(value[2])])
+    return probs[0]
+
+
+def _extract_score_lead(miscvalue: Sequence[float] | None) -> float | None:
+    if miscvalue is None or len(miscvalue) < 3:
+        return None
+    return float(miscvalue[2]) * 20.0

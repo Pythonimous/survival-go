@@ -1,7 +1,6 @@
 """Application settings loaded from environment variables."""
 
 from functools import lru_cache
-from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field, field_validator
@@ -9,7 +8,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Runtime configuration for KataGo integration and Survival scoring."""
+    """Runtime configuration for Survival scoring and API behavior."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -19,15 +18,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    katago_binary_path: Path = Field(alias="KATAGO_BINARY_PATH")
-    katago_config_path: Path = Field(alias="KATAGO_CONFIG_PATH")
-    katago_model_path: Path = Field(alias="KATAGO_MODEL_PATH")
     survival_threshold: float = Field(default=0.95, alias="SURVIVAL_THRESHOLD")
-    katago_top_n: int = Field(default=8, alias="KATAGO_TOP_N")
-    katago_analysis_timeout_seconds: float = Field(
-        default=30.0,
-        alias="KATAGO_ANALYSIS_TIMEOUT_SECONDS",
-    )
+    default_top_n: int = Field(default=8, alias="DEFAULT_TOP_N")
     cors_allow_origins: Annotated[
         list[str],
         NoDecode,
@@ -41,32 +33,6 @@ class Settings(BaseSettings):
         alias="CORS_ALLOW_ORIGINS",
     )
 
-    @field_validator(
-        "katago_binary_path",
-        "katago_config_path",
-        "katago_model_path",
-        mode="before",
-    )
-    @classmethod
-    def _coerce_path(cls, value: object) -> Path:
-        if isinstance(value, Path):
-            return value
-        if isinstance(value, str):
-            return Path(value)
-        raise TypeError(f"expected path string, got {type(value).__name__}")
-
-    @field_validator(
-        "katago_binary_path",
-        "katago_config_path",
-        "katago_model_path",
-    )
-    @classmethod
-    def _path_must_exist(cls, value: Path) -> Path:
-        resolved = value.expanduser().resolve()
-        if not resolved.is_file():
-            raise ValueError(f"path does not exist or is not a file: {value}")
-        return resolved
-
     @field_validator("survival_threshold")
     @classmethod
     def _survival_threshold_in_range(cls, value: float) -> float:
@@ -74,18 +40,11 @@ class Settings(BaseSettings):
             raise ValueError("SURVIVAL_THRESHOLD must be greater than 0 and at most 1")
         return value
 
-    @field_validator("katago_top_n")
+    @field_validator("default_top_n")
     @classmethod
-    def _katago_top_n_positive(cls, value: int) -> int:
+    def _default_top_n_positive(cls, value: int) -> int:
         if value < 1:
-            raise ValueError("KATAGO_TOP_N must be at least 1")
-        return value
-
-    @field_validator("katago_analysis_timeout_seconds")
-    @classmethod
-    def _timeout_positive(cls, value: float) -> float:
-        if value <= 0.0:
-            raise ValueError("KATAGO_ANALYSIS_TIMEOUT_SECONDS must be positive")
+            raise ValueError("DEFAULT_TOP_N must be at least 1")
         return value
 
     @field_validator("cors_allow_origins", mode="before")

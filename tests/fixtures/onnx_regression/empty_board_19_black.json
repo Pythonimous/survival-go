@@ -1,0 +1,35 @@
+{
+  "id": "empty-board-19-black",
+  "description": "Empty 19x19 board, Black to play — encoding regression anchor.",
+  "position": {
+    "boardSize": 19,
+    "setupStones": [],
+    "moves": [],
+    "sideToMove": "B"
+  },
+  "game": {
+    "presetId": "balanced",
+    "humanSide": "W"
+  },
+  "rawGenerator": "deterministic_v1",
+  "encoding": {
+    "binInputLength": 7942,
+    "globalInputLength": 19,
+    "globalInput": {
+      "5": -0.375,
+      "6": 1,
+      "7": 0.5,
+      "9": 0
+    }
+  },
+  "expectedAnalysis": {
+    "survivalScore": 361,
+    "unresolvedCount": 361,
+    "minBlackProbability": 0.0,
+    "policyLength": 362,
+    "policySum": 1.0,
+    "pBlackLength": 361,
+    "pBlackIndex0": 0.0,
+    "winrate": 0.3400329958454089
+  }
+}

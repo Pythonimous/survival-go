@@ -1,0 +1,39 @@
+{
+  "id": "top-n-limits-shortlist",
+  "description": "Only top-N ranked candidates are eligible for selection.",
+  "game": {
+    "presetId": "balanced",
+    "humanSide": "W"
+  },
+  "difficulty": {
+    "maxVisits": 20,
+    "topN": 1,
+    "randomness": 0,
+    "variantAwareness": 1,
+    "temperature": 0,
+    "blunderMargin": 1
+  },
+  "positionRaw": {
+    "ownershipProfile": {
+      "kind": "uniform",
+      "p_black": 0.5
+    }
+  },
+  "policyCandidates": [
+    {
+      "moveSlot": 0,
+      "policyProb": 0.2,
+      "winrate": 0.85
+    },
+    {
+      "moveSlot": 1,
+      "policyProb": 0.9,
+      "winrate": 0.35
+    }
+  ],
+  "expected": {
+    "selectedMoveSlot": 0,
+    "resigned": false,
+    "rankedMoveSlots": [0, 1]
+  }
+}
