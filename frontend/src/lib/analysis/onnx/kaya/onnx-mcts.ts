@@ -92,10 +92,55 @@ type ActiveMCTSSearch = MCTSSearchSpec & {
   completed: number;
   ownershipSum: Float64Array;
   ownershipCount: number;
+  childOwnershipSum: Map<string, Float64Array>;
+  childOwnershipCount: Map<string, number>;
   rootPolicyLogits?: number[];
 };
 
 const CPUCT = 1.5;
+
+function firstMoveFromRoot(path: MCTSStep[], root: MCTSNode): string | null {
+  if (path.length < 2 || !root.children) {
+    return null;
+  }
+  const childNode = path[1].node;
+  for (const [move, child] of root.children) {
+    if (child === childNode) {
+      return move;
+    }
+  }
+  return null;
+}
+
+function accumulateChildOwnership(
+  search: ActiveMCTSSearch,
+  move: string,
+  ownership: number[],
+  boardArea: number,
+): void {
+  let sum = search.childOwnershipSum.get(move);
+  if (!sum) {
+    sum = new Float64Array(boardArea);
+    search.childOwnershipSum.set(move, sum);
+  }
+  for (let point = 0; point < boardArea; point += 1) {
+    sum[point] += ownership[point];
+  }
+  search.childOwnershipCount.set(move, (search.childOwnershipCount.get(move) ?? 0) + 1);
+}
+
+function averagedChildOwnership(
+  search: ActiveMCTSSearch,
+  move: string,
+  _boardArea: number,
+): number[] | undefined {
+  const count = search.childOwnershipCount.get(move) ?? 0;
+  const sum = search.childOwnershipSum.get(move);
+  if (!sum || count <= 0) {
+    return undefined;
+  }
+  return Array.from(sum, value => value / count);
+}
 
 function selectMctsPath(
   root: MCTSNode,
@@ -176,12 +221,14 @@ function buildMctsResult(search: ActiveMCTSSearch, nextPla: Sign): AnalysisResul
     const rootWinRate = root.N > 0 ? root.W / root.N : 0.5;
     const rootScoreLead = root.N > 0 ? root.S / root.N : 0;
 
+    const boardArea = ownershipSum.length;
     for (const [move, child] of sorted) {
       moveSuggestions.push({
         move,
         probability: child.N > 0 && totalChildVisits > 0 ? child.N / totalChildVisits : child.P,
         winRate: child.N > 0 ? child.W / child.N : rootWinRate,
         scoreLead: child.N > 0 ? child.S / child.N : rootScoreLead,
+        ownership: averagedChildOwnership(search, move, boardArea),
       });
     }
   }
@@ -232,6 +279,8 @@ export async function runBatchedMCTS(
     completed: 0,
     ownershipSum: new Float64Array(boardArea),
     ownershipCount: 0,
+    childOwnershipSum: new Map(),
+    childOwnershipCount: new Map(),
   }));
 
   for (const search of active) {
@@ -329,6 +378,10 @@ export async function runBatchedMCTS(
             search.ownershipSum[point] += filtered.ownership[point];
           }
           search.ownershipCount++;
+          const rootMove = firstMoveFromRoot(item.path, search.root);
+          if (rootMove && item.path.length === 2) {
+            accumulateChildOwnership(search, rootMove, filtered.ownership, boardArea);
+          }
         }
       } else {
         value = leaf.node.N > 0 ? leaf.node.W / leaf.node.N : 0.5;

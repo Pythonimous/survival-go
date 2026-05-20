@@ -65,6 +65,8 @@ class CandidateSummary(BaseModel):
     move: str
     survival_score: int
     min_black_probability: float
+    winrate: float | None = None
+    score_lead: float | None = None
 
 
 class EngineMoveResponse(MoveResponse):
@@ -72,6 +74,8 @@ class EngineMoveResponse(MoveResponse):
     metrics: dict[str, float | int]
     candidates: list[CandidateSummary]
     resigned: bool = False
+    winrate: float | None = None
+    score_lead: float | None = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -284,10 +288,14 @@ def _register_engine_move_route(
                     move=candidate.move,
                     survival_score=candidate.survival_score,
                     min_black_probability=candidate.min_black_probability,
+                    winrate=candidate.winrate,
+                    score_lead=candidate.score_lead,
                 )
                 for candidate in outcome.candidates
             ],
             resigned=outcome.resigned,
+            winrate=outcome.winrate,
+            score_lead=outcome.score_lead,
         )
 
 

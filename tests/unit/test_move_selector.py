@@ -8,6 +8,7 @@ from backend.app.engine.move_selector import (
     filter_blunders,
     rank_candidates_for_side,
     select_candidate_for_side,
+    select_katago_top_candidate,
 )
 
 
@@ -18,6 +19,7 @@ def _candidate(
     min_black_probability: float = 0.5,
     policy: float = 0.0,
     score_lead: float | None = None,
+    winrate: float | None = None,
 ) -> CandidateMove:
     return CandidateMove(
         move=move,
@@ -25,6 +27,7 @@ def _candidate(
         min_black_probability=min_black_probability,
         policy=policy,
         score_lead=score_lead,
+        winrate=winrate,
     )
 
 
@@ -154,6 +157,38 @@ def test_select_candidate_for_side_temperature_sampling_uses_random_source() -> 
 
     assert selected.move in {"A1", "B1", "C1"}
     assert random_source.calls == 1
+
+
+@pytest.mark.unit
+def test_rank_candidates_for_side_black_prefers_higher_mcts_winrate() -> None:
+    config = DifficultyConfig(
+        max_visits=20,
+        top_n=3,
+        randomness=0.0,
+        variant_awareness=1.0,
+        temperature=0.0,
+    )
+    candidates = [
+        _candidate("D4", 0, winrate=0.2, policy=0.9),
+        _candidate("Q16", 0, winrate=0.7, policy=0.1),
+    ]
+
+    ranked = rank_candidates_for_side(candidates, engine_side="B", difficulty=config)
+
+    assert [candidate.move for candidate in ranked] == ["Q16", "D4"]
+
+
+@pytest.mark.unit
+def test_select_katago_top_candidate_picks_highest_policy() -> None:
+    candidates = [
+        _candidate("D4", 1, policy=0.2),
+        _candidate("Q16", 5, policy=0.9),
+        _candidate("K10", 2, policy=0.4),
+    ]
+
+    selected = select_katago_top_candidate(candidates)
+
+    assert selected.move == "Q16"
 
 
 @pytest.mark.unit

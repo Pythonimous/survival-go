@@ -125,7 +125,6 @@ export default function App() {
             <h1>Survival KataGo</h1>
             <BoardView
               gameId={gameId}
-              onTryAgain={handleStart}
               onNewGame={async () => {
                 if (gameId !== null) {
                   await endGameSession(gameId);

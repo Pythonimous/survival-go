@@ -9,30 +9,24 @@ import {
   markerMapFromLastMove,
   signMapFromStones,
 } from "@/lib/go/coordinates";
-import type {
-  CandidateSummary,
-  CreateGamePayload,
-  GameState,
-  SurvivalMetrics,
-} from "@/types/api";
+import type { CandidateSummary, GameState } from "@/types/api";
 import EngineReasoning from "./EngineReasoning";
 import GameOverDialog from "./GameOverDialog";
 import GobanBoard from "./GobanBoard";
 
 type ReasoningState = {
-  survivalScore: number;
-  metrics: SurvivalMetrics;
+  winrate?: number;
+  scoreLead?: number;
   candidates?: readonly CandidateSummary[];
   selectedMove?: string;
 };
 
 type BoardViewProps = {
   gameId: string;
-  onTryAgain: (payload: CreateGamePayload) => void;
   onNewGame: () => void;
 };
 
-export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewProps) {
+export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -113,8 +107,8 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
     setTurnProgressDetail("Running local ONNX engine inference and candidate search…");
     const body = await getAnalysisProvider().requestEngineMove(gameId);
     setReasoning({
-      survivalScore: body.survivalScore,
-      metrics: body.metrics,
+      winrate: body.winrate,
+      scoreLead: body.scoreLead,
       candidates: body.candidates,
       selectedMove: body.resigned ? undefined : body.move,
     });
@@ -220,8 +214,8 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
         positionInputFromGameState(gameState),
       );
       setReasoning({
-        survivalScore: body.survivalScore,
-        metrics: body.metrics,
+        winrate: body.winrate,
+        scoreLead: body.scoreLead,
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Could not analyze position.");
@@ -278,16 +272,7 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
     <section aria-label="Board view">
       {errorMessage && <p role="alert">{errorMessage}</p>}
       {showGameOverDialog && gameState && (
-        <GameOverDialog
-          outcome={gameOverOutcome}
-          onTryAgain={() =>
-            onTryAgain({
-              preset_id: gameState.preset_id,
-              human_side: gameState.human_side,
-              difficulty: gameState.difficulty,
-            })
-          }
-        />
+        <GameOverDialog outcome={gameOverOutcome} onTryAgain={onNewGame} />
       )}
       {gameState && signMap && (
         <div className="play-surface">
@@ -331,8 +316,9 @@ export default function BoardView({ gameId, onTryAgain, onNewGame }: BoardViewPr
             {reasoning ? (
               <EngineReasoning
                 humanSide={gameState.human_side}
-                boardSize={gameState.board_size}
-                metrics={reasoning.metrics}
+                candidatePerspectiveSide={gameState.engine_side}
+                winrate={reasoning.winrate}
+                scoreLead={reasoning.scoreLead}
                 candidates={reasoning.candidates}
                 selectedMove={reasoning.selectedMove}
               />

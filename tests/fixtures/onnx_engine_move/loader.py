@@ -28,10 +28,11 @@ class DifficultyFixture(TypedDict):
     blunderMargin: float
 
 
-class PolicyCandidateFixture(TypedDict):
+class PolicyCandidateFixture(TypedDict, total=False):
     moveSlot: int
     policyProb: float
     ownershipProfile: OwnershipProfile
+    winrate: float
 
 
 class ExpectedFixture(TypedDict, total=False):
@@ -72,4 +73,6 @@ def resolve_position_raw(fixture: EngineMoveFixture) -> dict[str, Any]:
 
 
 def resolve_candidate_raw(candidate: PolicyCandidateFixture) -> dict[str, Any]:
-    return raw_outputs_from_profile(candidate["ownershipProfile"])
+    profile = candidate.get("ownershipProfile", {"kind": "uniform", "p_black": 0.5})
+    winrate = candidate.get("winrate")
+    return raw_outputs_from_profile(profile, winrate=winrate)

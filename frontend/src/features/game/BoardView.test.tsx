@@ -28,10 +28,14 @@ const serverStyleAnalysisProvider = vi.hoisted(
       const body = (await response.json()) as {
         survival_score: number;
         metrics: AnalysisResult["metrics"];
+        winrate?: number;
+        score_lead?: number;
       };
       return {
         survivalScore: body.survival_score,
         metrics: body.metrics,
+        winrate: body.winrate,
+        scoreLead: body.score_lead,
       };
     },
     async getCandidateMoves() {
@@ -50,6 +54,8 @@ const serverStyleAnalysisProvider = vi.hoisted(
         candidates: EngineMoveResult["candidates"];
         move?: string;
         resigned: boolean;
+        winrate?: number;
+        score_lead?: number;
       };
       return {
         survivalScore: body.survival_score,
@@ -57,6 +63,8 @@ const serverStyleAnalysisProvider = vi.hoisted(
         candidates: body.candidates,
         move: body.resigned ? undefined : body.move,
         resigned: body.resigned,
+        winrate: body.winrate,
+        scoreLead: body.score_lead,
       };
     },
   }),
@@ -128,15 +136,13 @@ vi.mock("./GobanBoard", () => ({
 
 describe("BoardView", () => {
   const fetchMock = vi.fn<typeof fetch>();
-  const onTryAgain = vi.fn();
   const onNewGame = vi.fn();
 
   const renderBoard = (gameId = "game-1") =>
-    render(<BoardView gameId={gameId} onTryAgain={onTryAgain} onNewGame={onNewGame} />);
+    render(<BoardView gameId={gameId} onNewGame={onNewGame} />);
 
   beforeEach(() => {
     fetchMock.mockReset();
-    onTryAgain.mockReset();
     onNewGame.mockReset();
     captured.signMap = undefined;
     captured.markerMap = undefined;
@@ -536,7 +542,17 @@ describe("BoardView", () => {
       resigned: false,
       survivalScore: 1,
       metrics: { unresolved_count: 1, min_black_probability: 0.4 },
-      candidates: [{ move: "D4", survival_score: 1, min_black_probability: 0.4 }],
+      winrate: 0.52,
+      scoreLead: -1.5,
+      candidates: [
+        {
+          move: "D4",
+          survival_score: 1,
+          min_black_probability: 0.4,
+          winrate: 0.52,
+          score_lead: -1.5,
+        },
+      ],
     });
 
     requestEngineMoveSpy.mockRestore();
@@ -562,6 +578,8 @@ describe("BoardView", () => {
           game_id: "game-1",
           survival_score: 2,
           metrics: { unresolved_count: 2, min_black_probability: 0.55 },
+          winrate: 0.45,
+          score_lead: -3,
         }),
       );
 
@@ -578,10 +596,8 @@ describe("BoardView", () => {
       ),
     );
     expect(await screen.findByRole("region", { name: /engine reasoning/i })).toBeInTheDocument();
-    expect(
-      screen.getByText("45% non-Black control (keep any point in play)"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("2 / 361")).toBeInTheDocument();
+    expect(screen.getByText("55.0%")).toBeInTheDocument();
+    expect(screen.getByText("W+3")).toBeInTheDocument();
   });
 
   it("shows engine metrics and candidate table after automatic engine response", async () => {
@@ -636,9 +652,23 @@ describe("BoardView", () => {
           moves_played: 2,
           survival_score: 1,
           metrics: { unresolved_count: 1, min_black_probability: 0.4 },
+          winrate: 0.4,
+          score_lead: 2,
           candidates: [
-            { move: "Q16", survival_score: 1, min_black_probability: 0.4 },
-            { move: "D4", survival_score: 2, min_black_probability: 0.35 },
+            {
+              move: "Q16",
+              survival_score: 1,
+              min_black_probability: 0.4,
+              winrate: 0.4,
+              score_lead: 2,
+            },
+            {
+              move: "D4",
+              survival_score: 2,
+              min_black_probability: 0.35,
+              winrate: 0.35,
+              score_lead: -1,
+            },
           ],
           stones: [
             { move: "D4", color: "W" },
@@ -759,7 +789,7 @@ describe("BoardView", () => {
     expect(captured.onGtpClick).toBeUndefined();
   });
 
-  it("calls onTryAgain with current setup when Try again is clicked", async () => {
+  it("returns to new game setup when Try again is clicked", async () => {
     const user = userEvent.setup();
     fetchMock
       .mockResolvedValueOnce(
@@ -820,11 +850,7 @@ describe("BoardView", () => {
     renderBoard();
     await user.click(await screen.findByRole("button", { name: /try again/i }));
 
-    expect(onTryAgain).toHaveBeenCalledWith({
-      preset_id: "balanced",
-      human_side: "B",
-      difficulty: SAMPLE_DIFFICULTY,
-    });
+    expect(onNewGame).toHaveBeenCalledTimes(1);
   });
 
   it("resigns the game when Resign is confirmed", async () => {

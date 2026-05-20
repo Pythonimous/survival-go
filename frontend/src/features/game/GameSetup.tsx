@@ -16,9 +16,9 @@ const ADVANCED_FIELD_HELP = {
       "Each visit is one search step. The engine stops after this budget and chooses from what it learned. Presets set a baseline; raise this for tougher opponents at the cost of longer waits.",
   },
   topN: {
-    hint: "How many best moves the engine keeps in its shortlist before picking one.",
+    hint: "How many Survival-ranked candidates the engine considers when picking a move.",
     detail:
-      "KataGo ranks moves by composite Survival difficulty score. Only the top N candidates stay in the shortlist used for blunder filtering and final selection.",
+      "The browser sends the top 12 moves by KataGo visit probability. The backend reranks them by MCTS winrate plus policy/score priors (no per-move ownership inference), keeps the best N, then picks one.",
   },
   variantAwareness: {
     hint: "How strongly to prioritize the Survival objective over plausible KataGo ideas (0-1).",

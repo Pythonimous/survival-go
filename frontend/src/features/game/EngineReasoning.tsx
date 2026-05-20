@@ -1,50 +1,67 @@
 import {
   candidateColumnLabels,
-  formatCandidateBottleneck,
-  formatPositionMetrics,
-} from "@/lib/go/survivalDisplay";
-import type { CandidateSummary, StoneColor, SurvivalMetrics } from "@/types/api";
+  candidateTableCaption,
+  formatCandidateScore,
+  formatCandidateWinRate,
+  formatPositionAnalysis,
+  sortCandidatesForDisplay,
+} from "@/lib/go/analysisDisplay";
+import type { CandidateSummary, StoneColor } from "@/types/api";
 
 type EngineReasoningProps = {
   humanSide: StoneColor;
-  boardSize: number;
-  metrics: SurvivalMetrics;
+  /** Side that chose among candidates (engine); stats are shown from this perspective. */
+  candidatePerspectiveSide?: StoneColor;
+  winrate?: number;
+  scoreLead?: number;
   candidates?: readonly CandidateSummary[];
   selectedMove?: string;
 };
 
 export default function EngineReasoning({
   humanSide,
-  boardSize,
-  metrics,
+  candidatePerspectiveSide,
+  winrate,
+  scoreLead,
   candidates,
   selectedMove,
 }: EngineReasoningProps) {
-  const positionLabels = formatPositionMetrics(metrics, humanSide, boardSize);
-  const columns = candidateColumnLabels(humanSide);
+  const perspectiveSide = candidatePerspectiveSide ?? humanSide;
+  const hasCandidateComparison = Boolean(candidates && candidates.length > 0);
+  const columns = candidateColumnLabels(perspectiveSide);
+  const displayCandidates = hasCandidateComparison
+    ? sortCandidatesForDisplay(candidates!, perspectiveSide)
+    : candidates;
+  const selectedCandidate = selectedMove
+    ? displayCandidates?.find((candidate) => candidate.move === selectedMove)
+    : undefined;
+  const positionLabels = formatPositionAnalysis(
+    humanSide,
+    selectedCandidate?.winrate ?? winrate,
+    selectedCandidate?.score_lead ?? scoreLead,
+  );
 
   return (
     <section aria-label="Engine reasoning" className="engine-reasoning">
       <h2>Position analysis</h2>
       <dl className="engine-metrics">
-        <MetricPair label={positionLabels.disputedLabel} value={positionLabels.disputedValue} />
-        <MetricPair
-          label={positionLabels.bottleneckLabel}
-          value={positionLabels.bottleneckValue}
-        />
+        <MetricPair label={positionLabels.winRateLabel} value={positionLabels.winRateValue} />
+        <MetricPair label={positionLabels.scoreLabel} value={positionLabels.scoreValue} />
       </dl>
-      {candidates && candidates.length > 0 && (
-        <table aria-label="Candidate comparison" className="candidate-table">
+      {displayCandidates && displayCandidates.length > 0 && (
+        <>
+          <p className="candidate-table-caption">{candidateTableCaption(perspectiveSide)}</p>
+          <table aria-label="Candidate comparison" className="candidate-table">
           <thead>
             <tr>
               <th scope="col">#</th>
               <th scope="col">Move</th>
-              <th scope="col">{columns.disputedHeader}</th>
-              <th scope="col">{columns.bottleneckHeader}</th>
+              <th scope="col">{columns.winRateHeader}</th>
+              <th scope="col">{columns.scoreHeader}</th>
             </tr>
           </thead>
           <tbody>
-            {candidates.map((candidate, index) => (
+            {displayCandidates.map((candidate, index) => (
               <tr
                 key={candidate.move}
                 aria-label={candidate.move}
@@ -52,12 +69,13 @@ export default function EngineReasoning({
               >
                 <td>{index + 1}</td>
                 <td>{candidate.move}</td>
-                <td>{candidate.survival_score}</td>
-                <td>{formatCandidateBottleneck(candidate.min_black_probability, humanSide)}</td>
+                <td>{formatCandidateWinRate(candidate.winrate, perspectiveSide)}</td>
+                <td>{formatCandidateScore(candidate.score_lead, perspectiveSide)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </>
       )}
     </section>
   );

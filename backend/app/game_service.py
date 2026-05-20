@@ -26,7 +26,6 @@ from backend.app.engine.evaluator import (
 from backend.app.engine.resignation import should_engine_resign
 from backend.app.engine.move_selector import (
     CandidateMove,
-    filter_blunders,
     rank_candidates_for_side,
     select_candidate_for_side,
 )
@@ -59,6 +58,8 @@ class EngineMoveResult:
     metrics: SurvivalMetrics
     candidates: list[CandidateMove]
     resigned: bool = False
+    winrate: float | None = None
+    score_lead: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,7 +241,12 @@ class InMemoryGameService:
             engine_side=game.engine_side,
             min_black_probability=root.metrics.min_black_probability,
         ):
-            return self._engine_resign(game, evaluation=root_evaluation)
+            return self._engine_resign(
+                game,
+                evaluation=root_evaluation,
+                winrate=root.winrate,
+                score_lead=root.score_lead,
+            )
 
         browser_candidates = self._ranked_candidates_from_browser_payload(
             game=game,
@@ -249,6 +255,9 @@ class InMemoryGameService:
         return self._finalize_engine_move_from_candidates(
             game=game,
             candidates=browser_candidates,
+            root_metrics=root.metrics,
+            root_winrate=root.winrate,
+            root_score_lead=root.score_lead,
         )
 
     def _finalize_engine_move_from_candidates(
@@ -256,9 +265,11 @@ class InMemoryGameService:
         *,
         game: GameState,
         candidates: list[CandidateMove],
+        root_metrics: SurvivalMetrics | None = None,
+        root_winrate: float | None = None,
+        root_score_lead: float | None = None,
     ) -> EngineMoveResult:
-        # Survival rerank runs on the full browser payload; top_n truncates only
-        # after ranking (selection + display shortlist).
+        # Browser sends top MCTS candidates; backend reranks by winrate + policy/score priors.
         ranked = rank_candidates_for_side(
             candidates,
             engine_side=game.engine_side,
@@ -266,22 +277,19 @@ class InMemoryGameService:
         )
         ranked_shortlist = ranked[: min(self._game_top_n(game), len(ranked))]
         selected = self._select_engine_move(ranked_shortlist, game=game)
-        filtered_shortlist = filter_blunders(
-            ranked_shortlist,
-            engine_side=game.engine_side,
-            difficulty=game.difficulty,
-        )
         self._play_move(game, move=selected.move, side=game.engine_side)
         game.next_to_move = game.human_side
         return EngineMoveResult(
             game=game,
             move=selected.move,
             survival_score=selected.survival_score,
-            metrics=SurvivalMetrics(
+            metrics=root_metrics or SurvivalMetrics(
                 unresolved_count=selected.survival_score,
                 min_black_probability=selected.min_black_probability,
             ),
-            candidates=filtered_shortlist,
+            candidates=ranked_shortlist,
+            winrate=root_winrate,
+            score_lead=root_score_lead,
         )
 
     def _ranked_candidates_from_browser_payload(
@@ -298,25 +306,23 @@ class InMemoryGameService:
                 side=game.engine_side,
             ):
                 continue
-            evaluation = self.analyze_raw_model_outputs(
-                game_id=game.game_id,
-                policy=candidate.policy,
-                ownership=candidate.ownership,
-                value=candidate.value,
-                miscvalue=candidate.miscvalue,
-            )
-            resolved.append(
-                CandidateMove(
-                    move=candidate.move,
-                    survival_score=evaluation.survival_score,
-                    min_black_probability=evaluation.metrics.min_black_probability,
-                    policy=candidate.policy_prob,
-                    score_lead=evaluation.score_lead,
-                )
-            )
+            resolved.append(self._candidate_move_from_browser_stats(candidate))
         if not resolved:
             raise GameServiceError("no legal engine moves available")
         return resolved
+
+    def _candidate_move_from_browser_stats(
+        self, candidate: BrowserEngineMoveCandidate
+    ) -> CandidateMove:
+        """Build a ranked candidate from root MCTS stats (policy / winrate / score)."""
+        return CandidateMove(
+            move=candidate.move,
+            survival_score=0,
+            min_black_probability=0.5,
+            policy=candidate.policy_prob,
+            score_lead=_extract_score_lead(candidate.miscvalue),
+            winrate=_extract_winrate(candidate.value),
+        )
 
     def analyze_raw_model_outputs(
         self,
@@ -358,7 +364,12 @@ class InMemoryGameService:
         )
 
     def _engine_resign(
-        self, game: GameState, *, evaluation: SurvivalEvaluation
+        self,
+        game: GameState,
+        *,
+        evaluation: SurvivalEvaluation,
+        winrate: float | None = None,
+        score_lead: float | None = None,
     ) -> EngineMoveResult:
         game.status = "finished"
         game.winner = game.human_side
@@ -370,6 +381,8 @@ class InMemoryGameService:
             metrics=evaluation.metrics,
             candidates=[],
             resigned=True,
+            winrate=winrate,
+            score_lead=score_lead,
         )
 
     def legal_moves_for_side(self, game: GameState, *, side: StoneColor) -> list[str]:

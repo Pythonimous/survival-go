@@ -26,9 +26,12 @@ import {
   type OnnxModelVariant,
   getUserSelectedOnnxModelVariant,
 } from "@/lib/analysis/runtime/modelVariant";
-import { CROSS_TREE_MCTS_CHUNK, OnnxEngine } from "@/lib/analysis/onnx/kaya/onnx-engine";
+import { OnnxEngine } from "@/lib/analysis/onnx/kaya/onnx-engine";
 import { pickConfig, probeEnvironment, type AutoPick } from "@/lib/analysis/onnx/kaya/auto-config";
-import type { AnalysisResult as KayaAnalysisResult } from "@/lib/analysis/onnx/kaya/types";
+import type {
+  AnalysisResult as KayaAnalysisResult,
+  MoveSuggestion,
+} from "@/lib/analysis/onnx/kaya/types";
 import type { SignMap } from "@/lib/analysis/onnx/kaya/goboard";
 import { AnalysisQueue, type AnalysisRequest } from "@/lib/analysis/onnx/kaya/queue";
 import {
@@ -42,8 +45,10 @@ const MIN_POLICY_PROBABILITY = 1e-6;
 const DEFAULT_ENGINE_MOVE_TOP_N = 8;
 const DEFAULT_ENGINE_MOVE_VISITS = 1;
 const DEFAULT_MAX_MCTS_BATCH = 8;
-/** Policy-prior pool size before child MCTS: ceil(top_n * this multiplier). */
-export const POLICY_SHORTLIST_TOP_N_MULTIPLIER = 1.5;
+/** Chinese-rules Survival eval komi passed to KataGo featurization (selfKomi encoding). */
+export const ENGINE_EVAL_KOMI = 345.5;
+/** How many highest-probability legal moves the browser sends for backend Survival rerank. */
+export const ENGINE_MOVE_POLICY_CANDIDATE_COUNT = 12;
 
 type BrowserOnnxProviderOptions = {
   loadGameState?: (gameId: string) => Promise<GameState>;
@@ -331,6 +336,20 @@ function miscvalueHeadFromScoreLead(scoreLead: number | undefined): number[] | u
   return miscvalue;
 }
 
+function rawOutputFromMoveSuggestion(
+  suggestion: MoveSuggestion,
+  rootAnalysis: KayaAnalysisResult,
+  boardSize: number,
+): OnnxRawInferenceOutput {
+  const points = boardSize * boardSize;
+  return {
+    policy: policyLogitsFromAnalysis(rootAnalysis, boardSize),
+    ownership: Array.from({ length: points }, () => 0),
+    value: valueHeadFromWinRate(suggestion.winRate ?? rootAnalysis.winRate),
+    miscvalue: miscvalueHeadFromScoreLead(suggestion.scoreLead ?? rootAnalysis.scoreLead),
+  };
+}
+
 function rawOutputFromKayaAnalysis(
   analysis: KayaAnalysisResult,
   boardSize: number,
@@ -385,12 +404,13 @@ function buildQueueRequest(
     priority: AnalysisRequest["priority"];
     maxMctsBatch?: number;
     includeMove?: string;
+    komi?: number;
   },
 ): AnalysisRequest {
   return {
     signMap: signMapFromPositionInput(input),
     nextToPlay: input.sideToMove,
-    komi: 7.5,
+    komi: options.komi ?? 7.5,
     history: historyFromPositionInput(input),
     numVisits: options.numVisits,
     priority: options.priority,
@@ -410,8 +430,6 @@ export type EngineMoveSearchSettings = {
   topN: number;
   numVisits: number;
   maxMctsBatch: number;
-  childNumVisits: number;
-  childMaxMctsBatch: number;
 };
 
 export function countInferenceChunks(batchSize: number, chunkLimit: number = DEFAULT_MAX_MCTS_BATCH): number {
@@ -422,28 +440,32 @@ export function countInferenceChunks(batchSize: number, chunkLimit: number = DEF
   return Math.ceil(batchSize / limit);
 }
 
-export function policyShortlistLimit(topN: number): number {
-  return Math.max(1, Math.ceil(topN * POLICY_SHORTLIST_TOP_N_MULTIPLIER));
-}
-
 /**
- * Keep the top policy-prior legal moves (up to 1.5× top_n) for child MCTS.
- * Backend Survival rerank + top_n selection run on this reduced set only.
+ * Top legal moves by root MCTS visit probability (fallback: policy prior), for backend rerank.
+ * Ownership for each candidate comes from root-tree depth-1 evals when available.
  */
-export function shortlistMovesByRootPolicy(
+export function topPolicyCandidateMoves(
   legalMoves: readonly string[],
-  policyLogits: readonly number[],
+  rootAnalysis: KayaAnalysisResult,
   boardSize: number,
-  topN: number,
+  limit: number = ENGINE_MOVE_POLICY_CANDIDATE_COUNT,
 ): string[] {
-  const limit = policyShortlistLimit(topN);
-  if (legalMoves.length <= limit) {
-    return [...legalMoves];
+  const playable = legalMoves.filter((move) => !isPassMove(move));
+  if (playable.length <= limit) {
+    return [...playable];
   }
-  return [...legalMoves]
+  const probByMove = new Map<string, number>();
+  for (const suggestion of rootAnalysis.moveSuggestions) {
+    if (!isPassMove(suggestion.move)) {
+      probByMove.set(suggestion.move, suggestion.probability);
+    }
+  }
+  const policyLogits = policyLogitsFromAnalysis(rootAnalysis, boardSize);
+  return [...playable]
     .map((move) => ({
       move,
-      policyProb: policyProbabilityForMove(policyLogits, move, boardSize),
+      policyProb:
+        probByMove.get(move) ?? policyProbabilityForMove(policyLogits, move, boardSize),
     }))
     .sort((left, right) => right.policyProb - left.policyProb)
     .slice(0, limit)
@@ -460,11 +482,17 @@ export function resolveEngineMoveSearchSettings(
     topN,
     numVisits,
     maxMctsBatch,
-    // Free client mode: preserve full root search, evaluate shortlisted children
-    // with one visit for fast ownership estimates.
-    childNumVisits: 1,
-    childMaxMctsBatch: 1,
   };
+}
+
+export function suggestionsByMove(
+  analysis: KayaAnalysisResult,
+): Map<string, MoveSuggestion> {
+  const byMove = new Map<string, MoveSuggestion>();
+  for (const suggestion of analysis.moveSuggestions) {
+    byMove.set(suggestion.move, suggestion);
+  }
+  return byMove;
 }
 
 async function submitWithSharedQueue(request: AnalysisRequest): Promise<KayaAnalysisResult> {
@@ -481,23 +509,10 @@ export async function submitBatchWithSharedQueue(
   return Promise.all(handles.map((handle) => handle.result));
 }
 
-function oppositeSide(side: "B" | "W"): "B" | "W" {
-  return side === "B" ? "W" : "B";
-}
-
-function childPositionForCandidate(input: PositionInput, move: string): PositionInput {
-  return {
-    ...input,
-    moves: [...input.moves, { move, color: input.sideToMove }],
-    sideToMove: oppositeSide(input.sideToMove),
-  };
-}
-
 export class BrowserOnnxProvider implements AnalysisProvider {
   readonly id = "browser-onnx";
   private readonly loadGameStateImpl: (gameId: string) => Promise<GameState>;
   private readonly submitQueueRequestImpl: (request: AnalysisRequest) => Promise<KayaAnalysisResult>;
-  private readonly submitQueueBatchImpl: (requests: AnalysisRequest[]) => Promise<KayaAnalysisResult[]>;
   private readonly postRawOutputsForAnalysisImpl: (options: {
     gameId: string;
     raw: OnnxRawInferenceOutput;
@@ -506,15 +521,9 @@ export class BrowserOnnxProvider implements AnalysisProvider {
     gameId: string;
     payload: BrowserEngineMovePayload;
   }) => Promise<EngineMoveResult>;
-  private readonly trackChildInferenceMetrics: boolean;
-
   constructor(options: BrowserOnnxProviderOptions = {}) {
     this.loadGameStateImpl = options.loadGameState ?? loadGameStateByApi;
     this.submitQueueRequestImpl = options.submitQueueRequest ?? submitWithSharedQueue;
-    this.submitQueueBatchImpl = options.submitQueueBatch ?? submitBatchWithSharedQueue;
-    this.trackChildInferenceMetrics =
-      options.submitQueueBatch === undefined ||
-      options.submitQueueBatch === submitBatchWithSharedQueue;
     this.postRawOutputsForAnalysisImpl = options.postRawOutputsForAnalysis ?? postRawOnnxOutputsForAnalysis;
     this.postEngineMovePayloadImpl = options.postEngineMovePayload ?? postBrowserEngineMovePayload;
   }
@@ -560,76 +569,37 @@ export class BrowserOnnxProvider implements AnalysisProvider {
             numVisits: search.numVisits,
             priority: "batch",
             maxMctsBatch: search.maxMctsBatch,
+            komi: ENGINE_EVAL_KOMI,
           }),
         );
         const rootPhaseMs = performance.now() - rootStartedAt;
         const rootRaw = rawOutputFromKayaAnalysis(rootAnalysis, input.boardSize);
-        const rootPolicyLogits = policyLogitsFromAnalysis(rootAnalysis, input.boardSize);
         const legalMoves = legalMovesForEngineTurn(gameState);
-        const shortlistedMoves = shortlistMovesByRootPolicy(
+        const candidateMoves = topPolicyCandidateMoves(
           legalMoves,
-          rootPolicyLogits,
+          rootAnalysis,
           input.boardSize,
-          search.topN,
         );
-        const childRequests = shortlistedMoves.map((move) =>
-          buildQueueRequest(childPositionForCandidate(input, move), {
-            numVisits: search.childNumVisits,
-            priority: "batch",
-            maxMctsBatch: search.childMaxMctsBatch,
-          }),
-        );
-        const childStartedAt = performance.now();
-        let childInferenceCallCount = 0;
-        let childExecutionMode: "sequential" | "batched-multivisit" = "sequential";
-        if (
-          this.trackChildInferenceMetrics &&
-          childRequests.length > 0 &&
-          search.childNumVisits > 1
-        ) {
-          childExecutionMode = "batched-multivisit";
-          const engine = await getSharedOnnxEngine();
-          engine.resetInferenceRunCount();
-        }
-        let childAnalyses: Awaited<ReturnType<typeof this.submitQueueBatchImpl>> = [];
-        try {
-          if (search.childNumVisits <= 1) {
-            childAnalyses = childRequests.length
-              ? await this.submitQueueBatchImpl(childRequests)
-              : [];
-          } else {
-            for (let offset = 0; offset < childRequests.length; offset += CROSS_TREE_MCTS_CHUNK) {
-              const slice = childRequests.slice(offset, offset + CROSS_TREE_MCTS_CHUNK);
-              if (slice.length === 0) continue;
-              const part = await this.submitQueueBatchImpl(slice);
-              childAnalyses.push(...part);
-            }
-          }
-        } catch (error) {
-          throw error;
-        }
-        if (
-          this.trackChildInferenceMetrics &&
-          childRequests.length > 0 &&
-          search.childNumVisits > 1
-        ) {
-          const engine = await getSharedOnnxEngine();
-          childInferenceCallCount = engine.getInferenceRunCount();
-        }
-        const childPhaseMs = performance.now() - childStartedAt;
-        if (childAnalyses.length !== childRequests.length) {
-          throw new Error("Kaya engine batch analysis returned unexpected candidate count.");
-        }
+        const moveSuggestions = suggestionsByMove(rootAnalysis);
 
         const payload = assembleBrowserEngineMovePayload({
           positionRaw: rootRaw,
-          candidates: shortlistedMoves.map((move, index) => ({
-            extract: {
-              move,
-              policyProb: policyProbabilityForMove(rootPolicyLogits, move, input.boardSize),
-            },
-            raw: rawOutputFromKayaAnalysis(childAnalyses[index], input.boardSize),
-          })),
+          candidates: candidateMoves.map((move) => {
+            const suggestion = moveSuggestions.get(move);
+            const policyProb =
+              suggestion?.probability ??
+              policyProbabilityForMove(
+                policyLogitsFromAnalysis(rootAnalysis, input.boardSize),
+                move,
+                input.boardSize,
+              );
+            return {
+              extract: { move, policyProb },
+              raw: suggestion
+                ? rawOutputFromMoveSuggestion(suggestion, rootAnalysis, input.boardSize)
+                : rawOutputFromKayaAnalysis(rootAnalysis, input.boardSize),
+            };
+          }),
         });
         const backendStartedAt = performance.now();
         const result = await this.postEngineMovePayloadImpl({ gameId, payload });
@@ -639,14 +609,14 @@ export class BrowserOnnxProvider implements AnalysisProvider {
           type: "engine_move_phase",
           providerId: this.id,
           rootPhaseMs,
-          childPhaseMs,
-          childBatchSize: childRequests.length,
-          childBatchChunks: countInferenceChunks(childRequests.length),
-          childExecutionMode,
-          childInferenceCallCount,
+          childPhaseMs: 0,
+          childBatchSize: 0,
+          childBatchChunks: 0,
+          childExecutionMode: "sequential",
+          childInferenceCallCount: 0,
           backendRoundtripMs,
           legalMoveCount: legalMoves.length,
-          policyShortlistCount: shortlistedMoves.length,
+          policyShortlistCount: candidateMoves.length,
           topN: search.topN,
         });
 

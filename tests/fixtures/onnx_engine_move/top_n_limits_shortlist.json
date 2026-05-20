@@ -23,18 +23,12 @@
     {
       "moveSlot": 0,
       "policyProb": 0.2,
-      "ownershipProfile": {
-        "kind": "uniform",
-        "p_black": 1.0
-      }
+      "winrate": 0.85
     },
     {
       "moveSlot": 1,
       "policyProb": 0.9,
-      "ownershipProfile": {
-        "kind": "uniform",
-        "p_black": 0.4
-      }
+      "winrate": 0.35
     }
   ],
   "expected": {

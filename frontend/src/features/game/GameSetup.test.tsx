@@ -224,9 +224,9 @@ describe("GameSetup", () => {
 
     await user.click(screen.getByRole("button", { name: /advanced/i }));
 
-    expect(screen.getByText(/simulations kataGo runs per decision/i)).toBeInTheDocument();
-    expect(screen.getByText(/best moves the engine keeps in its shortlist/i)).toBeInTheDocument();
-    expect(screen.getByText(/plausible kataGo ideas/i)).toBeInTheDocument();
+    expect(screen.getByText(/simulations KataGo runs per decision/i)).toBeInTheDocument();
+    expect(screen.getByText(/Survival-ranked candidates the engine considers/i)).toBeInTheDocument();
+    expect(screen.getByText(/plausible KataGo ideas/i)).toBeInTheDocument();
     expect(screen.getByText(/how much variety the engine keeps/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /more information about max visits/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /more information about top candidates/i })).toBeInTheDocument();

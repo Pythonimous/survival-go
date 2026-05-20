@@ -68,17 +68,28 @@ def _ownership_from_p_black(values: Sequence[float]) -> list[float]:
     return [_p_black_to_raw_ownership(value) for value in values]
 
 
+def _value_from_winrate(black_winrate: float) -> list[float]:
+    import math
+
+    black = max(1e-6, min(1.0 - 1e-6, black_winrate))
+    white = 1.0 - black
+    tiny = 1e-6
+    return [math.log(black), math.log(white), math.log(tiny)]
+
+
 def _browser_candidate(
     move: str,
     ownership: Sequence[float],
     *,
     policy_prob: float = 0.5,
+    winrate: float | None = None,
 ) -> BrowserEngineMoveCandidate:
     return BrowserEngineMoveCandidate(
         move=move,
         policy_prob=policy_prob,
         policy=_policy_logits(),
         ownership=list(ownership),
+        value=_value_from_winrate(winrate) if winrate is not None else None,
     )
 
 
@@ -296,14 +307,16 @@ def test_apply_engine_move_uses_browser_candidates_and_survival_rerank() -> None
         game_id=game.game_id,
         position_ownership=_ownership_from_p_black([0.5] * 361),
         candidates=[
-            _browser_candidate(candidate_a, worse_eval),
-            _browser_candidate(candidate_b, better_eval),
+            _browser_candidate(candidate_a, worse_eval, winrate=0.4),
+            _browser_candidate(candidate_b, better_eval, winrate=0.99),
         ],
     )
 
     assert outcome.move == candidate_b
     assert outcome.survival_score == 0
-    assert [candidate.move for candidate in outcome.candidates] == [candidate_b]
+    assert [candidate.move for candidate in outcome.candidates] == [candidate_b, candidate_a]
+    assert outcome.candidates[0].winrate == pytest.approx(0.99)
+    assert outcome.candidates[0].score_lead is None
 
 
 @pytest.mark.unit
@@ -330,14 +343,15 @@ def test_apply_engine_move_black_prefers_higher_min_over_lower_survival_score() 
         game_id=game.game_id,
         position_ownership=_ownership_from_p_black([0.5] * 361),
         candidates=[
-            _browser_candidate(candidate_a, low_min_few_unresolved),
-            _browser_candidate(candidate_b, higher_min_more_unresolved),
+            _browser_candidate(candidate_a, low_min_few_unresolved, winrate=0.2),
+            _browser_candidate(candidate_b, higher_min_more_unresolved, winrate=0.55),
         ],
     )
 
     assert outcome.move == candidate_b
     assert outcome.metrics.min_black_probability == pytest.approx(0.5)
-    assert outcome.survival_score > 1
+    assert outcome.candidates[0].winrate == pytest.approx(0.55)
+    assert outcome.survival_score == 0
 
 
 @pytest.mark.unit
@@ -362,8 +376,8 @@ def test_apply_engine_move_enforces_top_n_candidate_limit() -> None:
         game_id=game.game_id,
         position_ownership=_ownership_from_p_black([0.5] * 361),
         candidates=[
-            _browser_candidate(candidate_a, lower_eval),
-            _browser_candidate(candidate_b, higher_eval),
+            _browser_candidate(candidate_a, lower_eval, winrate=0.35),
+            _browser_candidate(candidate_b, higher_eval, winrate=0.85),
         ],
     )
 
@@ -392,10 +406,11 @@ def test_apply_engine_move_uses_game_difficulty_top_n() -> None:
         game_id=game.game_id,
         position_ownership=_ownership_from_p_black([0.5] * 361),
         candidates=[
-            _browser_candidate(candidate_a, _ownership_from_p_black(p_black)),
+            _browser_candidate(candidate_a, _ownership_from_p_black(p_black), winrate=0.9),
             _browser_candidate(
                 candidate_b,
                 _ownership_from_p_black([0.4] + p_black[1:]),
+                winrate=0.3,
             ),
         ],
     )
@@ -439,8 +454,8 @@ def test_apply_engine_move_uses_temperature_sampling_for_non_top_choice() -> Non
         game_id=game.game_id,
         position_ownership=_ownership_from_p_black([0.5] * 361),
         candidates=[
-            _browser_candidate(best_move, base_raw),
-            _browser_candidate(alt_move, weaker),
+            _browser_candidate(best_move, base_raw, winrate=0.7),
+            _browser_candidate(alt_move, weaker, winrate=0.55),
         ],
     )
 
@@ -448,7 +463,7 @@ def test_apply_engine_move_uses_temperature_sampling_for_non_top_choice() -> Non
 
 
 @pytest.mark.unit
-def test_apply_engine_move_blunder_margin_filters_low_score_candidates() -> None:
+def test_apply_engine_move_blunder_margin_filters_selection_not_ui_shortlist() -> None:
     base = [1.0] * 361
     near_best = _ownership_from_p_black([0.985] + base[1:])
     blunder = _ownership_from_p_black([0.3] + base[1:])
@@ -481,14 +496,18 @@ def test_apply_engine_move_blunder_margin_filters_low_score_candidates() -> None
         game_id=game.game_id,
         position_ownership=_ownership_from_p_black([0.5] * 361),
         candidates=[
-            _browser_candidate(best_move, base_raw),
-            _browser_candidate(second_move, near_best),
-            _browser_candidate(third_move, blunder),
+            _browser_candidate(best_move, base_raw, winrate=0.8),
+            _browser_candidate(second_move, near_best, winrate=0.79),
+            _browser_candidate(third_move, blunder, winrate=0.2),
         ],
     )
 
     assert outcome.move == best_move
-    assert [candidate.move for candidate in outcome.candidates] == [best_move, second_move]
+    assert [candidate.move for candidate in outcome.candidates] == [
+        best_move,
+        second_move,
+        third_move,
+    ]
 
 
 @pytest.mark.unit

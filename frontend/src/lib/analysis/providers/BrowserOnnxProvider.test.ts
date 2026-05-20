@@ -5,10 +5,11 @@ import {
   buildKayaEngineBootstrapSelection,
   countInferenceChunks,
   policyProbabilityForMove,
-  policyShortlistLimit,
+  ENGINE_EVAL_KOMI,
+  ENGINE_MOVE_POLICY_CANDIDATE_COUNT,
   resolveEngineMoveSearchSettings,
   resolveOnnxNumThreads,
-  shortlistMovesByRootPolicy,
+  topPolicyCandidateMoves,
 } from "./BrowserOnnxProvider";
 
 const SAMPLE_LEGAL_MOVES = ["Q16", "D16", "K10", "C3", "R4", "F3"];
@@ -155,7 +156,7 @@ describe("BrowserOnnxProvider", () => {
     });
   });
 
-  it("maps max_visits to root MCTS and single-visit shortlisted children", () => {
+  it("maps max_visits to root-only MCTS search settings", () => {
     const search = resolveEngineMoveSearchSettings({
       max_visits: 16,
       top_n: 8,
@@ -170,17 +171,15 @@ describe("BrowserOnnxProvider", () => {
     });
 
     expect(search.numVisits).toBe(16);
-    expect(search.childNumVisits).toBe(1);
-    expect(search.childMaxMctsBatch).toBe(1);
+    expect(search.maxMctsBatch).toBe(8);
+    expect(search).not.toHaveProperty("childNumVisits");
   });
 
-  it("limits policy shortlist to ceil(1.5 * top_n)", () => {
-    expect(policyShortlistLimit(3)).toBe(5);
-    expect(policyShortlistLimit(8)).toBe(12);
-    expect(policyShortlistLimit(1)).toBe(2);
+  it("exposes a fixed top-12 policy candidate pool for backend rerank", () => {
+    expect(ENGINE_MOVE_POLICY_CANDIDATE_COUNT).toBe(12);
   });
 
-  it("shortlists legal moves by descending root policy prior", () => {
+  it("shortlists legal moves by descending root MCTS visit probability", () => {
     const logits = Array.from({ length: 362 }, () => -20);
     const [qx, qy] = gtpToVertex("Q16", 19);
     const [dx, dy] = gtpToVertex("D16", 19);
@@ -195,11 +194,24 @@ describe("BrowserOnnxProvider", () => {
       logits[y * 19 + x] = -2;
     }
 
-    const shortlist = shortlistMovesByRootPolicy(
+    const shortlist = topPolicyCandidateMoves(
       SAMPLE_LEGAL_MOVES,
-      logits,
+      {
+        moveSuggestions: [
+          { move: "Q16", probability: 0.5 },
+          { move: "D16", probability: 0.3 },
+          { move: "K10", probability: 0.15 },
+          { move: "C3", probability: 0.04 },
+          { move: "R4", probability: 0.01 },
+          { move: "F3", probability: 0.0 },
+        ],
+        winRate: 0.5,
+        scoreLead: 0,
+        currentTurn: "B",
+        policyLogits: logits,
+      },
       19,
-      3,
+      5,
     );
 
     expect(shortlist).toHaveLength(5);
@@ -222,7 +234,7 @@ describe("BrowserOnnxProvider", () => {
     expect(countInferenceChunks(SAMPLE_LEGAL_MOVES.length)).toBe(1);
   });
 
-  it("evaluates policy-shortlisted legal moves before Survival rerank", async () => {
+  it("builds engine-move payload from root tree without per-child searches", async () => {
     const loadGameState = vi.fn(async () => ({
       game_id: "game-wide-pool",
       preset_id: "balanced",
@@ -256,26 +268,20 @@ describe("BrowserOnnxProvider", () => {
       const [x, y] = gtpToVertex(move, 19);
       logits[y * 19 + x] = 0;
     }
+    const rootOwnership = Array.from({ length: 361 }, (_, index) => index / 361);
     const submitQueueRequest = vi.fn(async () => ({
-      moveSuggestions: [{ move: "Q16", probability: 0.6 }],
+      moveSuggestions: [
+        { move: "Q16", probability: 0.6, ownership: rootOwnership },
+        { move: "D16", probability: 0.3, ownership: rootOwnership },
+        { move: "K10", probability: 0.1, ownership: rootOwnership },
+      ],
       policyLogits: logits,
       winRate: 0.55,
       scoreLead: 1.8,
       currentTurn: "B" as const,
-      ownership: Array.from({ length: 361 }, () => 0),
-      visits: 1,
+      ownership: rootOwnership,
+      visits: 4,
     }));
-    const childAnalysis = {
-      moveSuggestions: [{ move: "PASS", probability: 1 }],
-      winRate: 0.5,
-      scoreLead: 0,
-      currentTurn: "W" as const,
-      ownership: Array.from({ length: 361 }, () => 0),
-      visits: 1,
-    };
-    const submitQueueBatch = vi.fn(async (requests: AnalysisRequest[]) =>
-      requests.map(() => childAnalysis),
-    );
     const postPayload = vi.fn(async () => ({
       survivalScore: 0,
       metrics: { unresolved_count: 0, min_black_probability: 1 },
@@ -286,23 +292,24 @@ describe("BrowserOnnxProvider", () => {
     const provider = new BrowserOnnxProvider({
       loadGameState,
       submitQueueRequest,
-      submitQueueBatch,
       postEngineMovePayload: postPayload,
     });
 
     await provider.requestEngineMove("game-wide-pool");
 
-    expect(submitQueueBatch).toHaveBeenCalledTimes(1);
-    const childRequests = submitQueueBatch.mock.calls[0]?.[0] ?? [];
-    expect(childRequests).toHaveLength(5);
-    expect(childRequests.every((request) => request.numVisits === 1)).toBe(true);
-    expect(childRequests.every((request) => request.maxMctsBatch === 1)).toBe(true);
+    expect(submitQueueRequest).toHaveBeenCalledTimes(1);
+    expect(submitQueueRequest).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<AnalysisRequest>>({
+        komi: ENGINE_EVAL_KOMI,
+        numVisits: 20,
+      }),
+    );
     const postedCalls = postPayload.mock.calls as unknown as Array<
       [{ gameId: string; payload: BrowserEngineMovePayload }]
     >;
     const postedMoves = postedCalls[0][0].payload.candidates.map((candidate) => candidate.move);
-    expect(postedMoves).toHaveLength(5);
-    expect(postedMoves).not.toContain("F3");
+    expect(postedMoves.length).toBeLessThanOrEqual(ENGINE_MOVE_POLICY_CANDIDATE_COUNT);
+    expect(postedMoves[0]).toBe("Q16");
   });
 
   it("emits engine-move phase instrumentation with batch shape", async () => {
@@ -358,18 +365,8 @@ describe("BrowserOnnxProvider", () => {
         scoreLead: 0,
         currentTurn: "B" as const,
         ownership: Array.from({ length: 361 }, () => 0),
-        visits: 1,
+        visits: 4,
       })),
-      submitQueueBatch: vi.fn(async (requests: AnalysisRequest[]) =>
-        requests.map(() => ({
-          moveSuggestions: [{ move: "PASS", probability: 1 }],
-          winRate: 0.5,
-          scoreLead: 0,
-          currentTurn: "W" as const,
-          ownership: Array.from({ length: 361 }, () => 0),
-          visits: 1,
-        })),
-      ),
       postEngineMovePayload: vi.fn(async () => ({
         survivalScore: 0,
         metrics: { unresolved_count: 0, min_black_probability: 1 },
@@ -383,7 +380,7 @@ describe("BrowserOnnxProvider", () => {
 
     expect(phaseEvents).toEqual([
       {
-        childBatchSize: 3,
+        childBatchSize: 0,
         legalMoveCount: 3,
         policyShortlistCount: 3,
         topN: 2,
@@ -418,41 +415,20 @@ describe("BrowserOnnxProvider", () => {
       stones: [{ move: "D4", color: "W" as const }],
       legal_moves: ["Q16", "D16", "K10"],
     }));
-    const submitQueueRequest = vi.fn(async (_request: AnalysisRequest) => ({
-      moveSuggestions: [{ move: "Q16", probability: 0.6 }],
+    const rootAnalysis = {
+      moveSuggestions: [
+        { move: "Q16", probability: 0.6, ownership: Array.from({ length: 361 }, () => 0.1) },
+        { move: "D16", probability: 0.3, ownership: Array.from({ length: 361 }, () => -0.1) },
+        { move: "K10", probability: 0.1, ownership: Array.from({ length: 361 }, () => 0) },
+      ],
       policyLogits: Array.from({ length: 362 }, () => -4),
       winRate: 0.55,
       scoreLead: 1.8,
       currentTurn: "B" as const,
       ownership: Array.from({ length: 361 }, () => 0),
-      visits: 1,
-    }));
-    const submitQueueBatch = vi.fn(async (_requests: AnalysisRequest[]) => [
-      {
-        moveSuggestions: [{ move: "PASS", probability: 1 }],
-        winRate: 0.56,
-        scoreLead: 2.1,
-        currentTurn: "W" as const,
-        ownership: Array.from({ length: 361 }, () => 0.1),
-        visits: 1,
-      },
-      {
-        moveSuggestions: [{ move: "PASS", probability: 1 }],
-        winRate: 0.52,
-        scoreLead: 1.1,
-        currentTurn: "W" as const,
-        ownership: Array.from({ length: 361 }, () => -0.1),
-        visits: 1,
-      },
-      {
-        moveSuggestions: [{ move: "PASS", probability: 1 }],
-        winRate: 0.54,
-        scoreLead: 1.5,
-        currentTurn: "W" as const,
-        ownership: Array.from({ length: 361 }, () => 0),
-        visits: 1,
-      },
-    ]);
+      visits: 20,
+    };
+    const submitQueueRequest = vi.fn(async () => rootAnalysis);
     const postPayload = vi.fn(async () => ({
       survivalScore: 0,
       metrics: { unresolved_count: 0, min_black_probability: 1 },
@@ -463,7 +439,6 @@ describe("BrowserOnnxProvider", () => {
     const provider = new BrowserOnnxProvider({
       loadGameState,
       submitQueueRequest,
-      submitQueueBatch,
       postEngineMovePayload: postPayload,
     });
 
@@ -477,22 +452,9 @@ describe("BrowserOnnxProvider", () => {
         nextToPlay: "B",
         numVisits: 20,
         maxMctsBatch: 8,
+        komi: ENGINE_EVAL_KOMI,
       }),
     );
-    expect(submitQueueBatch).toHaveBeenCalledTimes(1);
-    expect(submitQueueBatch).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining<Partial<AnalysisRequest>>({
-          priority: "batch",
-          nextToPlay: "W",
-          numVisits: 1,
-          maxMctsBatch: 1,
-        }),
-      ]),
-    );
-    const childRequests = submitQueueBatch.mock.calls[0]?.[0] ?? [];
-    expect(childRequests).toHaveLength(3);
-    expect(childRequests.length).toBeGreaterThan(2);
     expect(postPayload).toHaveBeenCalledWith({
       gameId: "game-1",
       payload: expect.objectContaining({

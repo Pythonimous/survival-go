@@ -94,24 +94,20 @@ def _candidates_from_fixture(
         engine_side=game.engine_side,
         slots=slots,
     )
+    from backend.app.game_service import BrowserEngineMoveCandidate
+
     candidates: list[CandidateMove] = []
     for move, item in zip(moves, fixture["policyCandidates"], strict=True):
         raw = resolve_candidate_raw(item)
-        evaluation = service.analyze_raw_model_outputs(
-            game_id=game_id,
+        browser_candidate = BrowserEngineMoveCandidate(
+            move=move,
+            policy_prob=float(item["policyProb"]),
             policy=raw["policy"],
             ownership=raw["ownership"],
             value=raw.get("value"),
             miscvalue=raw.get("miscvalue"),
         )
-        candidates.append(
-            CandidateMove(
-                move=move,
-                survival_score=evaluation.survival_score,
-                min_black_probability=evaluation.metrics.min_black_probability,
-                policy=float(item["policyProb"]),
-            )
-        )
+        candidates.append(service._candidate_move_from_browser_stats(browser_candidate))
     return candidates
 
 
@@ -120,7 +116,7 @@ def _candidates_from_fixture(
 def test_browser_engine_move_fixture_matches_survival_rerank(
     fixture: EngineMoveFixture,
 ) -> None:
-    """Mirrors browser path: raw ONNX per position -> backend metrics -> Survival rerank."""
+    """Mirrors browser path: MCTS stats per candidate -> winrate/policy rerank."""
     service = InMemoryGameService(survival_threshold=0.95)
     game_cfg = fixture["game"]
     difficulty = _difficulty_from_fixture(fixture)

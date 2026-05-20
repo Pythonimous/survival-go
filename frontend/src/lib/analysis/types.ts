@@ -25,6 +25,8 @@ export type EngineMoveResult = {
   candidates: readonly CandidateMoveInfo[];
   move?: string;
   resigned: boolean;
+  winrate?: number;
+  scoreLead?: number;
 };
 
 export interface AnalysisProvider {

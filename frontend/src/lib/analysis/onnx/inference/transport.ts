@@ -19,6 +19,8 @@ type EngineMoveApiResponse = {
   candidates: EngineMoveResult["candidates"];
   move?: string;
   resigned: boolean;
+  winrate?: number;
+  score_lead?: number;
 };
 
 type RawModelOutputsPayload = {
@@ -89,5 +91,7 @@ export async function postBrowserEngineMovePayload(options: {
     candidates: body.candidates,
     move: body.resigned ? undefined : body.move,
     resigned: body.resigned,
+    winrate: body.winrate,
+    scoreLead: body.score_lead,
   };
 }

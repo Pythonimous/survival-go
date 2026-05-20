@@ -4,6 +4,8 @@ Local-first web prototype for a Go training variant built around **total board o
 
 The objective shaping is intentionally simple and directional: evaluate each candidate move by the board's weakest ownership point for Black (`min p_black`). If the engine is playing Black, it picks moves that raise that floor (fix the weakest point first); if it is playing White, it picks moves that lower the same floor (make Black's weakest point even weaker). This reframes move choice around a single bottleneck metric, which lets the project repurpose a strong general Go model for Survival Go behavior **without retraining** — KataGo's policy and ownership are wrapped and reranked, not relearned.
 
+In addition to ownership-driven Survival metrics, the project also uses komi-aware score signals (extreme-komi framing) where appropriate in browser-era ranking/evaluation, improving practical move quality under browser inference constraints.
+
 **Audience:** Go players who want to practice killing and living with invasions when they do not have a practice partner.
 
 ## Quick Start
@@ -44,6 +46,7 @@ This repository includes:
 - **Inference path:** Browser-side **KataGo via ONNX Runtime Web** is the only execution path. Capability probing picks `fp32` when viable and falls back to `uint8` for constrained runtimes; there is no server-side inference fallback.
 - **Boundary contract:** TypeScript only encodes ONNX **model inputs** and transports **raw model outputs** (policy logits, ownership tensor, optional value head). All semantic interpretation — softmax over policy, ownership → `p_black`, Survival metrics, reranking, resignation — lives in Python (`backend/app/game_service.py`, `engine/`).
 - **Survival reranking:** KataGo's top-N policy candidates are re-evaluated by Survival objective; difficulty controls (`max_visits`, `top_n`, `randomness`, `temperature`, `blunder_margin`, `variant_awareness`) shape the final pick. See [`survival-difficulty-model.md`](docs/development/survival-difficulty-model.md).
+- **Komi-based framing:** Alongside ownership bottleneck metrics, score/komi signals are used to stabilize browser-side evaluation and candidate quality in practice.
 - **Testing:** `./scripts/run_tests.sh` (or `make test-*`) for unit, integration, e2e, lint, and type checks; see `tests/README.md`. CI: `.github/workflows/ci.yml`. **Release gate:** [`docs/development/release-checklist.md`](docs/development/release-checklist.md) (`./scripts/run_tests.sh full` or `release`).
 - **Linting & types:** `flake8` (including `max-complexity=10`) and `mypy` via `pytest -m lint` and project config.
 - **Architecture:** Layered layout and boundaries described in `docs/architecture.md` (thin handlers, focused services).
@@ -73,6 +76,7 @@ This repository is licensed under the [GNU Affero General Public License v3.0 or
 
 ## References
 
+- **Contributors and acknowledgments:** `CONTRIBUTORS.md`
 - **Environment variables:** `docs/development/environment.md`
 - **Local run:** `docs/development/local-run.md`
 - **Browser inference design (KataGo via ONNX):** `docs/development/browser-inference-design.md`

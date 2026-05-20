@@ -110,10 +110,6 @@ describe("BrowserOnnxProvider Kaya engine integration", () => {
         queuedRequests.push(request);
         return queue.submit(request).result;
       },
-      submitQueueBatch: async (requests) => {
-        queuedRequests.push(...requests);
-        return Promise.all(queue.submitBatch(requests).map((handle) => handle.result));
-      },
       postEngineMovePayload: vi.fn(async ({ payload }) => {
         postedPayloads.push(payload);
         return {
@@ -140,6 +136,7 @@ describe("BrowserOnnxProvider Kaya engine integration", () => {
         numVisits: 4,
         maxMctsBatch: 4,
         priority: "batch",
+        komi: 345.5,
       }),
     );
     expect(ortMock.sessionRun).toHaveBeenCalled();
@@ -149,14 +146,9 @@ describe("BrowserOnnxProvider Kaya engine integration", () => {
     expect(legalMoves.length).toBeGreaterThan(gameState.difficulty?.top_n ?? 0);
     expect(result.move).toBe(result.candidates[0]?.move);
 
-    const maxVisits = gameState.difficulty?.max_visits ?? 1;
-    const maxMctsBatch = Math.min(maxVisits, 8);
-    const childInferenceRuns = ortMock.sessionRun.mock.calls.length;
-    const maxRunsPerBatchedChildPhase = Math.ceil(maxVisits / maxMctsBatch) + 1;
-    expect(childInferenceRuns).toBeLessThan(
-      1 + legalMoves.length * maxRunsPerBatchedChildPhase,
-    );
-    expect(childInferenceRuns).toBeLessThan(1 + legalMoves.length);
+    const rootInferenceRuns = ortMock.sessionRun.mock.calls.length;
+    expect(rootInferenceRuns).toBeLessThanOrEqual(Math.ceil(4 / 4) + 2);
+    expect(rootInferenceRuns).toBeGreaterThan(0);
   });
 });
 

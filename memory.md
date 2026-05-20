@@ -1,5 +1,15 @@
 # Project memory
 
+## Engine-move rerank without per-candidate ownership (2026-05-20)
+
+- Browser engine-move path now shortlists the top **12** legal moves by root MCTS visit probability (`ENGINE_MOVE_POLICY_CANDIDATE_COUNT`) and posts each child's **policy / winrate / score_lead** from search — no second ONNX pass per candidate for ownership.
+- `backend/app/game_service.py` builds `CandidateMove` rows from browser MCTS stats (`_candidate_move_from_browser_stats`); `move_selector` prefers **winrate** when present, else ownership Survival (`_ranking_term`). Root position metrics/winrate/score still come from the single root analyze call; resignation unchanged.
+- `EngineMoveResult` and API responses expose optional root `winrate` / `score_lead`; candidate panel lists the post-rerank `top_n` shortlist (blunder filter removed from engine-move finalize — temperature sampling still applies at selection).
+- MCTS (`onnx-mcts.ts`) averages child **ownership** across visits (`childOwnershipSum` / `childOwnershipCount`) for nodes that need ownership on the analyze path.
+- UI: renamed `survivalDisplay` → `analysisDisplay.ts` — human-perspective win rate/score labels via Kaya `processAnalysis`, candidate table sorted by side-aware winrate then score; `EngineReasoning` / `BoardView` updated. `GameSetup` advanced hints document the new top-12 MCTS → backend rerank flow.
+- Added `CONTRIBUTORS.md` (Kirill Nikolaev, Renan Cruz) and README link.
+- Close-phase validation: `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (278 passed), `npm --prefix frontend test -- --run` (139 passed), `npm --prefix frontend run build` passed.
+
 ## Backend ownership mapping supports richer outputs (2026-05-19)
 
 - `backend/app/game_service.py` now interprets `ownership` as direct `p_black` only on richer ONNX paths (when `value` or `miscvalue` is present) and values are already in `[0,1]`; otherwise it keeps legacy raw-ownership conversion `(v + 1) / 2`.

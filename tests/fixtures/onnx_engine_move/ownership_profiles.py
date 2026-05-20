@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Literal, TypedDict
 
 
@@ -44,6 +45,13 @@ def build_ownership_from_profile(
     raise ValueError(f"unknown ownership profile kind: {kind}")
 
 
+def value_from_black_winrate(winrate: float) -> list[float]:
+    black = max(1e-6, min(1.0 - 1e-6, winrate))
+    white = 1.0 - black
+    tiny = 1e-6
+    return [math.log(black), math.log(white), math.log(tiny)]
+
+
 def build_minimal_policy(*, board_size: int = 19) -> list[float]:
     """Policy logits long enough for backend raw decode (362 points + pass, head 0 used)."""
     moves = board_size * board_size + 1
@@ -54,10 +62,12 @@ def raw_outputs_from_profile(
     profile: OwnershipProfile,
     *,
     board_size: int = 19,
+    winrate: float | None = None,
 ) -> dict[str, Any]:
+    value = value_from_black_winrate(winrate) if winrate is not None else [0.0, 0.0, 0.0]
     return {
         "policy": build_minimal_policy(board_size=board_size),
         "ownership": build_ownership_from_profile(profile, board_size=board_size),
-        "value": [0.0, 0.0, 0.0],
+        "value": value,
         "miscvalue": [0.0] * 10,
     }

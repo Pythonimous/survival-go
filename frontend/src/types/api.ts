@@ -70,12 +70,16 @@ export type CandidateSummary = {
   move: string;
   survival_score: number;
   min_black_probability: number;
+  winrate?: number;
+  score_lead?: number;
 };
 
 export type AnalyzeResponse = {
   game_id: string;
   survival_score: number;
   metrics: SurvivalMetrics;
+  winrate?: number;
+  score_lead?: number;
 };
 
 export type EngineMoveResponse = MoveResponse & {
@@ -83,4 +87,6 @@ export type EngineMoveResponse = MoveResponse & {
   metrics: SurvivalMetrics;
   candidates: CandidateSummary[];
   resigned: boolean;
+  winrate?: number;
+  score_lead?: number;
 };

@@ -18,6 +18,8 @@ export interface MoveSuggestion {
   winRate?: number;
   /** Score lead for this move (positive = Black leads) — available after MCTS */
   scoreLead?: number;
+  /** Ownership after this move from root-tree leaf evals (Black perspective, -1..1). */
+  ownership?: number[];
 }
 
 /**
