@@ -1,5 +1,12 @@
 # Project memory
 
+## Favicon, PWA manifest, and live play link (2026-05-20)
+
+- Added cherry-blossom favicon set under `frontend/public/` (`.ico`, 16/32 PNG, Apple touch, Android chrome 192/512) and `site.webmanifest`; wired links in `frontend/index.html`.
+- Twemoji CC-BY 4.0 attribution recorded in `docs/development/favicon-attribution.txt` and `THIRD_PARTY_NOTICES.md`.
+- README now links to production at https://survival-go.com/.
+- Close-phase validation: `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (278 passed), `npm --prefix frontend test -- --run` (139 passed), `npm --prefix frontend run build` passed.
+
 ## Engine-move rerank without per-candidate ownership (2026-05-20)
 
 - Browser engine-move path now shortlists the top **12** legal moves by root MCTS visit probability (`ENGINE_MOVE_POLICY_CANDIDATE_COUNT`) and posts each child's **policy / winrate / score_lead** from search — no second ONNX pass per candidate for ownership.

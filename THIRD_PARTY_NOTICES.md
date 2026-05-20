@@ -72,6 +72,12 @@ The frontend loads static **ONNX neural network files** (for example `kaya.fp32.
 
 If you replace these files with weights from another channel, update this notice and your compliance review accordingly.
 
+## Favicon graphics (Twitter Twemoji)
+
+- **Graphics:** Cherry blossom emoji (`1f338.svg`) from [Twitter Twemoji](https://github.com/twitter/twemoji)
+- **License:** [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- **How we use it:** Static favicon and PWA icon assets under `frontend/public/` (see `docs/development/favicon-attribution.txt` for the exact upstream SVG path).
+
 ## Development and test tools
 
 Development dependencies (pytest, flake8, mypy, Vitest, Testing Library, etc.) are listed in [`requirements.txt`](requirements.txt) and [`frontend/package.json`](frontend/package.json). They are not required to run the deployed application but are used to build and verify this repository.

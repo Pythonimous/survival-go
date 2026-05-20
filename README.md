@@ -1,5 +1,7 @@
 # survival-go
 
+**[Play here](https://survival-go.com/)**
+
 Local-first web prototype for a Go training variant built around **total board ownership**. Black aims to own every point on the board; White aims to keep at least one point from full Black control. The engine is **KataGo**, run as an ONNX export inside the user's browser via `onnxruntime-web`; the Python backend is the source of truth for game state, rules, API contracts, and Survival analysis semantics.
 
 The objective shaping is intentionally simple and directional: evaluate each candidate move by the board's weakest ownership point for Black (`min p_black`). If the engine is playing Black, it picks moves that raise that floor (fix the weakest point first); if it is playing White, it picks moves that lower the same floor (make Black's weakest point even weaker). This reframes move choice around a single bottleneck metric, which lets the project repurpose a strong general Go model for Survival Go behavior **without retraining** — KataGo's policy and ownership are wrapped and reranked, not relearned.
@@ -77,6 +79,7 @@ This repository is licensed under the [GNU Affero General Public License v3.0 or
 ## References
 
 - **Contributors and acknowledgments:** `CONTRIBUTORS.md`
+- **Favicon attribution (Twemoji):** `docs/development/favicon-attribution.txt`
 - **Environment variables:** `docs/development/environment.md`
 - **Local run:** `docs/development/local-run.md`
 - **Browser inference design (KataGo via ONNX):** `docs/development/browser-inference-design.md`
