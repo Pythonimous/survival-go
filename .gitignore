@@ -93,3 +93,4 @@ analysis_logs/
 # Node
 node_modules/
 frontend/dist/
+frontend/public/
