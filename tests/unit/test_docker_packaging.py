@@ -70,6 +70,17 @@ def test_frontend_nginx_proxies_api_and_health() -> None:
 
 
 @pytest.mark.unit
+def test_frontend_dockerfile_copies_scripts_before_npm_ci() -> None:
+    """postinstall runs copy-runtime-assets; scripts must exist before npm ci."""
+    text = FRONTEND_DOCKERFILE.read_text(encoding="utf-8")
+    scripts_idx = text.find("COPY frontend/scripts/")
+    npm_ci_idx = text.find("RUN npm ci")
+    assert scripts_idx != -1, "must COPY frontend/scripts/ before npm ci"
+    assert npm_ci_idx != -1
+    assert scripts_idx < npm_ci_idx
+
+
+@pytest.mark.unit
 def test_dockerignore_excludes_local_venv_and_env() -> None:
     assert DOCKERIGNORE.is_file()
     text = DOCKERIGNORE.read_text(encoding="utf-8")
