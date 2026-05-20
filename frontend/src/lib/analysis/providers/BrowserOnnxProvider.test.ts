@@ -4,6 +4,7 @@ import {
   BrowserOnnxProvider,
   buildKayaEngineBootstrapSelection,
   countInferenceChunks,
+  normalizeOnnxExecutionProviders,
   policyProbabilityForMove,
   ENGINE_EVAL_KOMI,
   ENGINE_MOVE_POLICY_CANDIDATE_COUNT,
@@ -33,6 +34,22 @@ describe("BrowserOnnxProvider", () => {
     expect(resolveOnnxNumThreads()).toBeUndefined();
   });
 
+  it("places wasm before webgpu so ORT can constant-fold and assign CPU fallbacks", () => {
+    expect(normalizeOnnxExecutionProviders(["webgpu", "wasm"])).toEqual([
+      "wasm",
+      "webgpu",
+    ]);
+    expect(normalizeOnnxExecutionProviders(["wasm", "webgpu"])).toEqual([
+      "wasm",
+      "webgpu",
+    ]);
+  });
+
+  it("leaves wasm-only and webgpu-only chains unchanged", () => {
+    expect(normalizeOnnxExecutionProviders(["wasm"])).toEqual(["wasm"]);
+    expect(normalizeOnnxExecutionProviders(["webgpu"])).toEqual(["webgpu"]);
+  });
+
   it("maps Kaya auto-pick to model URL and execution providers", () => {
     const autoPick: AutoPick = {
       modelId: "kata1-b28-latest",
@@ -48,7 +65,7 @@ describe("BrowserOnnxProvider", () => {
 
     expect(selection.modelVariant).toBe("fp16");
     expect(selection.modelUrl).toBe(ONNX_MODEL_ARTIFACT_URLS.fp16);
-    expect(selection.executionProviders).toEqual(["webgpu", "wasm"]);
+    expect(selection.executionProviders).toEqual(["wasm", "webgpu"]);
   });
 
   it("honors user-selected model variant over Kaya quantization", () => {

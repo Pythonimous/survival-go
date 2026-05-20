@@ -45,7 +45,7 @@ export interface OnnxEngineConfig extends BaseEngineConfig {
   /** URL to the ONNX model */
   modelUrl?: string;
 
-  /** Execution providers to try (default: ['webgpu', 'wasm']) */
+  /** Execution providers to try (default: ['wasm', 'webgpu']) */
   executionProviders?: string[];
 
   /** Number of threads for WASM backend (default: 4) */

@@ -89,7 +89,7 @@ function buildProviderList(
   config: OnnxEngineConfig,
   webgpuAvailable: boolean
 ): { providers: (string | object)[]; requestedProviders: string[] } {
-  let providers = config.executionProviders || ['webgpu', 'wasm'];
+  let providers = config.executionProviders || ['wasm', 'webgpu'];
   providers = providers.filter(p => {
     const name = typeof p === 'string' ? p : (p as any).name;
     return name !== 'webgl';

@@ -487,8 +487,8 @@ describe("BoardView", () => {
 
     expect(await screen.findByText("White is thinking...")).toBeInTheDocument();
     expect(
-      screen.getByText("Submitting your move to backend and waiting for confirmation…"),
-    ).toBeInTheDocument();
+      screen.queryByText("Submitting your move to backend and waiting for confirmation…"),
+    ).not.toBeInTheDocument();
 
     resolveMove(
       jsonResponse(
@@ -506,7 +506,7 @@ describe("BoardView", () => {
     );
   });
 
-  it("shows detailed opening engine progress when the human plays Black", async () => {
+  it("shows engine thinking during opening move when the human plays Black", async () => {
     let resolveOpeningEngineMove: (value: EngineMoveResult) => void = () => undefined;
     const openingEngineMoveDeferred = new Promise<EngineMoveResult>((resolve) => {
       resolveOpeningEngineMove = resolve;
@@ -534,8 +534,8 @@ describe("BoardView", () => {
 
     expect(await screen.findByText("White is thinking...")).toBeInTheDocument();
     expect(
-      screen.getByText("Running local ONNX engine inference and candidate search…"),
-    ).toBeInTheDocument();
+      screen.queryByText(/Running local ONNX|Opening move:/),
+    ).not.toBeInTheDocument();
 
     resolveOpeningEngineMove({
       move: "D4",

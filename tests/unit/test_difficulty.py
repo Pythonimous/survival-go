@@ -65,6 +65,29 @@ def test_list_difficulty_presets_includes_expected_ids() -> None:
 
 
 @pytest.mark.unit
+def test_difficulty_presets_scale_search_budget_and_top_n() -> None:
+    configs = {preset.id: preset.config for preset in list_difficulty_presets()}
+
+    assert configs["easy"].max_visits == 4
+    assert configs["normal"].max_visits == 6
+    assert configs["hard"].max_visits == 16
+    assert configs["impossible"].max_visits == 38
+
+    assert configs["easy"].max_visits < configs["normal"].max_visits
+    assert configs["normal"].max_visits < configs["hard"].max_visits
+    assert configs["hard"].max_visits < configs["impossible"].max_visits
+
+    assert configs["easy"].top_n == 16
+    assert configs["normal"].top_n == 8
+    assert configs["hard"].top_n == 4
+    assert configs["impossible"].top_n == 2
+
+    assert configs["easy"].top_n > configs["normal"].top_n
+    assert configs["normal"].top_n > configs["hard"].top_n
+    assert configs["hard"].top_n > configs["impossible"].top_n
+
+
+@pytest.mark.unit
 def test_difficulty_presets_strengthen_variant_awareness_curve() -> None:
     presets = list_difficulty_presets()
     configs = {preset.id: preset.config for preset in presets}

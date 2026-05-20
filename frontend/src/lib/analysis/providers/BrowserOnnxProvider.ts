@@ -80,11 +80,27 @@ export function primeSharedOnnxEngineModelBuffer(buffer: ArrayBuffer): void {
   primedModelBuffer = buffer;
 }
 
+/**
+ * ORT Web needs the WASM CPU EP registered before WebGPU so graph optimization
+ * (constant folding) and CPU-only nodes (shape ops, unsupported kernels) get valid
+ * assignments. WebGPU-only bootstrap caused "no CPU kernel" MatMul fold errors and
+ * unassigned-node warnings in the console.
+ */
+export function normalizeOnnxExecutionProviders(providers: readonly string[]): string[] {
+  const unique = [...new Set(providers)];
+  const hasWasm = unique.includes("wasm");
+  const hasWebgpu = unique.includes("webgpu");
+  if (hasWasm && hasWebgpu) {
+    return ["wasm", "webgpu"];
+  }
+  return unique.length === 0 ? ["wasm"] : unique;
+}
+
 function toOnnxExecutionProviders(backendChain: readonly string[]): string[] {
   const providers = backendChain.filter((backend): backend is "webgpu" | "wasm" =>
     backend === "webgpu" || backend === "wasm",
   );
-  return providers.length === 0 ? ["wasm"] : providers;
+  return normalizeOnnxExecutionProviders(providers);
 }
 
 function readViteEnv(key: string): string | undefined {
@@ -162,32 +178,14 @@ export async function getSharedOnnxEngine(): Promise<OnnxEngine> {
         ? await preloadThreadedOrtWasmPaths()
         : undefined;
 
-      // KataGo ONNX cannot use graph capture (not all nodes on JsExecutionProvider).
-      const providerChains: string[][] = selection.executionProviders.includes("webgpu")
-        ? [["webgpu"], selection.executionProviders]
-        : [selection.executionProviders];
-      let engine: OnnxEngine | null = null;
-      for (const executionProviders of providerChains) {
-        try {
-          const candidate = new OnnxEngine({
-            modelBuffer,
-            modelUrl: modelBuffer ? undefined : selection.modelUrl,
-            executionProviders,
-            numThreads,
-            wasmPaths,
-          });
-          await candidate.initialize();
-          engine = candidate;
-          break;
-        } catch (error) {
-          if (executionProviders === providerChains[providerChains.length - 1]) {
-            throw error;
-          }
-        }
-      }
-      if (!engine) {
-        throw new Error("Failed to initialize OnnxEngine.");
-      }
+      const engine = new OnnxEngine({
+        modelBuffer,
+        modelUrl: modelBuffer ? undefined : selection.modelUrl,
+        executionProviders: selection.executionProviders,
+        numThreads,
+        wasmPaths,
+      });
+      await engine.initialize();
       if (selection.upgradedFrom) {
         console.warn(
           `[OnnxEngine] ${selection.upgradedFrom} model is not viable on WebGPU; using ${selection.modelVariant} instead.`,

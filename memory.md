@@ -1078,3 +1078,11 @@
 - `frontend/src/lib/analysis/runtime/modelLoader.ts` no longer pre-gates model load on local runtime heuristics; loader now attempts initialization and surfaces real load errors via existing progress/error events.
 - `frontend/src/lib/analysis/runtime/modelVariant.ts` now keeps only artifact URL resolution + user selection state, plus `getKayaRecommendedOnnxModelVariant()` for Kaya-derived recommendation.
 - Validation: `npm --prefix frontend test -- --run src/lib/analysis/selection.test.ts src/lib/analysis/runtime/modelVariant.test.ts src/features/analysisRuntime/AnalysisRuntimeBanner.test.tsx src/features/analysisRuntime/AnalysisRuntimeModelPicker.test.tsx src/App.test.tsx src/lib/analysis/providers/BrowserOnnxProvider.test.ts`, `./.venv/bin/python -m mypy .`, and `./.venv/bin/python -m pytest -m lint` passed.
+
+## Close-phase: ONNX EP order, difficulty tuning, AWS docs (2026-05-20)
+
+- **ONNX execution providers:** `normalizeOnnxExecutionProviders()` orders `["wasm","webgpu"]` when both are present; removed WebGPU-only bootstrap retry in `getSharedOnnxEngine()`. Fixes ORT console errors (`no CPU kernel` for constant-fold MatMul, unassigned nodes). Defaults updated in `onnx-session.ts` / `onnx-types.ts`.
+- **Difficulty presets:** Lowered `max_visits` (Easy 4, Normal 6, Hard 16, Impossible 38) and adjusted `top_n` (Easy 16, Normal 8, Hard 4, Impossible 2) for faster browser MCTS; unit test `test_difficulty_presets_scale_search_budget_and_top_n` locks values.
+- **UI:** Removed granular `turnProgressDetail` status strings from `BoardView` (keeps turn-status label only).
+- **AWS docs:** Refreshed `cloud-aws-zero-to-domain-runbook.md` for API-only backend + browser ONNX; deleted redundant `cloud-aws-ecs-full-runbook.md`; heavy-path pointers now go to `cloud-aws-ecs-topology.md`.
+- Validation: `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (279 passed), `npm --prefix frontend test -- --run` (141 passed).

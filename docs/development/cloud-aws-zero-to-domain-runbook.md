@@ -1,8 +1,8 @@
 # AWS runbook: zero to custom domain (simple path)
 
-**Goal:** `https://play.<your-domain>` serves the full app (UI + API + KataGo) with minimal AWS surface area.
+**Goal:** `https://play.<your-domain>` serves the full app (UI + API) with minimal AWS surface area. Inference runs in the browser via ONNX.
 
-**What you are *not* building on day one:** ECS, Fargate, Application Load Balancer, CloudWatch log groups, ECR, S3 static site, CloudFront, ACM juggling across two hostnames. That stack is documented separately when you actually need it: **[cloud-aws-ecs-full-runbook.md](cloud-aws-ecs-full-runbook.md)**.
+**What you are *not* building on day one:** ECS, Fargate, Application Load Balancer, CloudWatch log groups, ECR, S3 static site hosting for the app itself, ACM juggling across two hostnames. That heavier split stack is outlined in **[cloud-aws-ecs-topology.md](cloud-aws-ecs-topology.md)** with supporting docs under `docs/development/cloud-*.md`.
 
 **What you *are* building:**
 
@@ -15,12 +15,12 @@ Browser  -->  https://play.example.com
                     v
               docker compose (same as local packaging)
                 frontend (nginx) :9080 on localhost
-                backend (FastAPI + KataGo)
+                backend (FastAPI API-only)
 ```
 
 One hostname, one server, same `docker compose` flow you can run on your laptop. See [docker-compose.md](docker-compose.md).
 
-**Rough cost:** ~**$15–40/month** (e.g. EC2 `t3.large` or similar + Elastic IP — region-dependent).
+**Rough cost:** ~**$8–25/month** (e.g. EC2 `t3.small` / `t3.medium` + Elastic IP, region-dependent).
 
 **Time:** ~**1–2 hours** plus first image build time and DNS propagation.
 
@@ -55,7 +55,7 @@ Top-right of Console → choose a region close to you (e.g. **US East (N. Virgin
 |---------|-------------------|
 | Name | `survival-go` |
 | AMI | **Ubuntu Server 24.04 LTS** (64-bit x86) |
-| Instance type | **`t3.large`** or **`t3a.large`** (2 vCPU, 8 GiB, **x86_64**) — see [§1.2a Instance families](#12a-instance-families-t3-vs-t4g-vs-c7i) |
+| Instance type | **`t3.small`** or **`t3.medium`** (API-only backend; start small and scale after load tests) |
 | Key pair | Create new or select existing → **download `.pem`** — you need it to SSH |
 | Network | Default VPC is fine |
 | Auto-assign public IP | **Enable** |
@@ -72,21 +72,17 @@ Top-right of Console → choose a region close to you (e.g. **US East (N. Virgin
 
 Launch instance. Wait until **Instance state = running**.
 
-### 1.2a Instance families (t3 vs t4g vs c7i)
+### 1.2a Instance families (right-size for API-only backend)
 
-Our Docker image ships a **prebuilt KataGo x86_64 binary**. Pick an **x86** instance and the **64-bit (x86) Ubuntu** AMI.
+Inference is browser-side; the EC2 host serves static files and a lightweight FastAPI backend.
 
-| Family | Works out of the box? | Good for |
-|--------|------------------------|----------|
-| **t3 / t3a** | Yes | **Default for initial testing** — cheap, 8 GiB on `large`, enough for a few concurrent users. CPU is *burstable* (credits); sustained engine analysis can slow down if you hammer it for hours. |
-| **c7i / c6i** | Yes | **Snappier engine moves** — compute-optimized, sustained CPU without burst credits. `c7i.large` is only **4 GiB RAM** (tight for KataGo + model); prefer **`c7i.xlarge`** (4 vCPU, 8 GiB) if moves feel slow and you do not mind the cost. |
-| **t4g / m7g / c7g** (Graviton, **ARM**) | **No** (current image) | Cheaper per spec on paper, but KataGo in this repo is **not** the ARM zip — you would need an ARM build or compile from source. Skip unless you explicitly invest in that. |
+| Family | Good for | Notes |
+|--------|----------|-------|
+| **t3 / t3a** | **Default MVP deploy** | Burstable and usually cheapest. Start at `t3.small`; bump to `t3.medium` if API latency or memory pressure appears. |
+| **c7i / c6i** | Higher sustained API traffic | Usually unnecessary early unless you have sustained request volume. |
+| **t4g / m7g / c7g** (ARM) | Cost optimization later | Works if your images/deps are multi-arch. Validate your build pipeline first. |
 
-**Practical picks:**
-
-- **Budget / first deploy:** `t3a.large` (same idea as `t3.large`, often a bit cheaper).
-- **“Engine feels sluggish” on t3:** try `c6i.large` or `c7i.xlarge` (not `*.medium` — too little RAM).
-- **Do not use `t4g`** for this project until the image uses an ARM KataGo binary.
+**Practical picks:** start with `t3.small`, move to `t3.medium` if needed, and only then consider compute-optimized families.
 
 ### 1.3 Elastic IP (stable DNS target)
 
@@ -158,7 +154,7 @@ git clone https://github.com/YOUR_ORG/survival-go.git
 cd survival-go
 ```
 
-First start (downloads KataGo + model; **10–30+ minutes**):
+First start (builds frontend/backend images; duration depends on network and cache):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
@@ -229,7 +225,33 @@ Open `https://play.example.com` in a browser → presets → start a game → pl
 
 ---
 
-## Part 5 — Deploy updates (day two and onward)
+## Part 5 — Optional: host ONNX model files on S3 + CloudFront
+
+By default, browsers fetch ONNX weights from Hugging Face (`kaya-go/kaya`). That is fine for MVP.
+
+Use S3 + CloudFront when you want:
+
+- a project-controlled origin (less third-party outage/rate-limit risk),
+- lower latency for your users, or
+- explicit cache/version rollout control.
+
+High-level flow:
+
+1. Mirror pinned artifacts with `scripts/sync_onnx_artifacts.sh` (see [onnx-model-artifacts.md](onnx-model-artifacts.md)).
+2. Upload to a versioned prefix in S3 (for example `kaya/v0.2.2/`).
+3. Put CloudFront in front of the bucket.
+4. Build frontend with:
+
+```bash
+VITE_ONNX_MODEL_BASE_URL="https://<your-cdn-domain>/kaya/v0.2.2" \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Keep `VITE_ONNX_MODEL_FILENAME_PREFIX` at default unless you changed filenames during mirroring.
+
+---
+
+## Part 6 — Deploy updates (day two and onward)
 
 SSH to the server:
 
@@ -254,12 +276,13 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 
 ---
 
-## Part 6 — Tuning and ops (still simple)
+## Part 7 — Tuning and ops (still simple)
 
 | Knob | Where |
 |------|--------|
 | Survival defaults | `SURVIVAL_THRESHOLD`, `DEFAULT_TOP_N` in compose env if needed |
 | More CPU/RAM | Change instance type → stop instance → change type → start |
+| Model origin | `VITE_ONNX_MODEL_BASE_URL` (+ optional `VITE_ONNX_MODEL_FILENAME_PREFIX`) at frontend build time |
 | Disk full | `docker system prune` (careful) or enlarge volume |
 | Restart everything | `docker compose -f docker-compose.yml -f docker-compose.prod.yml restart` |
 
@@ -277,16 +300,16 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 | `failed to bind host port ... address already in use` | `docker compose ... down`, then `sudo ss -tlnp \| grep -E '8080|9080'`. Prod uses **9080** only; do not run local compose (8080) on the same VM. |
 | SSH timeout | Security group allows 22 from your current IP; instance running |
 | `curl 127.0.0.1:9080` fails | `docker compose logs backend`; first build still running |
-| Backend restart loop | Check `docker compose logs backend`; OOM → try larger instance |
+| Backend restart loop | Check `docker compose logs backend`; OOM → bump instance size |
 | HTTPS certificate fails | DNS A record points to Elastic IP; ports 80/443 open |
-| Site loads, engine never moves | Browser console; ONNX models in frontend build ([onnx-model-artifacts.md](onnx-model-artifacts.md)) |
-| Out of disk on first build | 30 GiB minimum; frontend image includes ONNX artifacts |
+| Site loads, engine never moves | Browser devtools network tab: ONNX model fetches. If using default HF origin, check outbound access/rate limits. If self-hosting, verify `VITE_ONNX_MODEL_BASE_URL` and that CDN URLs return `200` for all variants. |
+| Out of disk on first build | 20–30 GiB is usually enough; increase if Docker cache grows |
 
 ---
 
 ## When to use the heavy AWS path
 
-Move to **[cloud-aws-ecs-full-runbook.md](cloud-aws-ecs-full-runbook.md)** if you need things this VM model does not give you:
+Move to the **[ECS topology](cloud-aws-ecs-topology.md)** and related `cloud-*` docs if you need things this VM model does not give you:
 
 - Separate `app.` and `api.` hostnames with a CDN for static assets
 - Multiple backend replicas / autoscaling
@@ -299,7 +322,7 @@ Until then, the single-VM path matches the repo’s Docker packaging and is enou
 
 ## Checklist
 
-- [ ] EC2 `t3.large` (or similar) + Elastic IP
+- [ ] EC2 `t3.small` or `t3.medium` + Elastic IP
 - [ ] Security group: 22 (my IP), 80, 443
 - [ ] Namecheap A record `play` → Elastic IP
 - [ ] Docker + compose plugin on server

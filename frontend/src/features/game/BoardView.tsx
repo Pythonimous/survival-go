@@ -31,7 +31,6 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isTurnInProgress, setIsTurnInProgress] = useState(false);
-  const [turnProgressDetail, setTurnProgressDetail] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [reasoning, setReasoning] = useState<ReasoningState | null>(null);
   const openingEngineHandledRef = useRef(false);
@@ -104,7 +103,6 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
   };
 
   const requestEngineMove = useCallback(async (): Promise<void> => {
-    setTurnProgressDetail("Running local ONNX engine inference and candidate search…");
     const body = await getAnalysisProvider().requestEngineMove(gameId);
     setReasoning({
       winrate: body.winrate,
@@ -112,7 +110,6 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
       candidates: body.candidates,
       selectedMove: body.resigned ? undefined : body.move,
     });
-    setTurnProgressDetail("Refreshing board state from backend…");
     setGameState(await loadGameState());
   }, [gameId, loadGameState]);
 
@@ -132,7 +129,6 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
     const requestId = ++openingEngineRequestRef.current;
     setErrorMessage(null);
     setIsTurnInProgress(true);
-    setTurnProgressDetail("Opening move: running local ONNX engine inference…");
     void (async () => {
       try {
         await requestEngineMove();
@@ -148,7 +144,6 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
       } finally {
         if (requestId === openingEngineRequestRef.current) {
           setIsTurnInProgress(false);
-          setTurnProgressDetail(null);
         }
       }
     })();
@@ -169,9 +164,7 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
     setErrorMessage(null);
     setIsTurnInProgress(true);
     try {
-      setTurnProgressDetail("Submitting your move to backend and waiting for confirmation…");
       await submitHumanMove(move);
-      setTurnProgressDetail("Move accepted. Running local ONNX engine response…");
       await requestEngineMove();
     } catch (error) {
       setErrorMessage(
@@ -179,7 +172,6 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
       );
     } finally {
       setIsTurnInProgress(false);
-      setTurnProgressDetail(null);
     }
   };
 
@@ -193,13 +185,11 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
     setErrorMessage(null);
     setIsTurnInProgress(true);
     try {
-      setTurnProgressDetail("Submitting resignation to backend…");
       await submitHumanResign();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Could not resign game.");
     } finally {
       setIsTurnInProgress(false);
-      setTurnProgressDetail(null);
     }
   };
 
@@ -280,11 +270,6 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
             {turnStatusLabel && (
               <p className="turn-indicator" role="status" aria-live="polite">
                 {turnStatusLabel}
-              </p>
-            )}
-            {isTurnInProgress && turnProgressDetail && (
-              <p className="turn-progress-detail" role="status" aria-live="polite">
-                {turnProgressDetail}
               </p>
             )}
             <GobanBoard

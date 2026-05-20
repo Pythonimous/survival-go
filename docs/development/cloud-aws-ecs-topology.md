@@ -11,7 +11,7 @@ This document defines the full AWS topology for Survival Go when you choose:
 - low cost with acceptable latency
 - custom domain managed in Namecheap
 
-Backend container image and KataGo path wiring: [cloud-backend-container.md](cloud-backend-container.md). Frontend static build and S3 publish: [cloud-frontend-static.md](cloud-frontend-static.md). **Env vars, Fargate sizing, and analysis timeouts:** [cloud-env-and-sizing.md](cloud-env-and-sizing.md). **Deploy scripts and post-deploy smoke:** [cloud-deploy-automation.md](cloud-deploy-automation.md). **Simple day-zero runbook:** [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md). **Full ECS runbook:** [cloud-aws-ecs-full-runbook.md](cloud-aws-ecs-full-runbook.md).
+Backend container image: [cloud-backend-container.md](cloud-backend-container.md). Frontend static build and S3 publish: [cloud-frontend-static.md](cloud-frontend-static.md). **Env vars, Fargate sizing, and timeouts:** [cloud-env-and-sizing.md](cloud-env-and-sizing.md). **Deploy scripts and post-deploy smoke:** [cloud-deploy-automation.md](cloud-deploy-automation.md). **Simple day-zero runbook:** [cloud-aws-zero-to-domain-runbook.md](cloud-aws-zero-to-domain-runbook.md).
 
 ## Recommended topology
 
