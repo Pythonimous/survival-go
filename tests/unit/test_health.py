@@ -24,14 +24,34 @@ def _clear_settings_cache() -> None:
 
 
 @pytest.mark.unit
-def test_health_returns_service_status() -> None:
+def test_health_returns_service_status_and_readiness() -> None:
     from backend.app.main import create_app
 
     client = TestClient(create_app())
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "survival-go"}
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["service"] == "survival-go"
+    assert payload["ready"] is True
+    assert payload["checks"]["settings"]["status"] == "ok"
+    assert payload["checks"]["preset_bundle"]["status"] == "ok"
+    assert payload["checks"]["preset_bundle"]["detail"]["preset_count"] == 3
+
+
+@pytest.mark.unit
+def test_health_returns_503_when_preset_bundle_unavailable(tmp_path: Path) -> None:
+    from backend.app.main import create_app
+
+    client = TestClient(create_app(presets_dir=tmp_path))
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "unhealthy"
+    assert payload["ready"] is False
+    assert payload["checks"]["preset_bundle"]["status"] == "error"
 
 
 @pytest.mark.unit

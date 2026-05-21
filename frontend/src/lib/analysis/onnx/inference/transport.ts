@@ -1,5 +1,10 @@
+/**
+ * POST raw ONNX outputs / engine-move payloads to the backend for interpretation.
+ * fetchWithTimeout applies only to these HTTP calls — after local OnnxEngine work finishes.
+ */
 import { apiUrl } from "@/lib/api/client";
 import { readApiFailure } from "@/lib/api/errors";
+import { fetchWithTimeout } from "@/lib/api/fetchWithTimeout";
 import type { AnalysisResult, EngineMoveResult } from "@/lib/analysis/types";
 import type { OnnxRawInferenceOutput } from "@/lib/analysis/onnx/inference/rawOutputs";
 import type { BrowserEngineMovePayload } from "@/lib/analysis/onnx/inference/engineMovePayload";
@@ -33,6 +38,7 @@ type RawModelOutputsPayload = {
 export async function postRawOnnxOutputsForAnalysis(options: {
   gameId: string;
   raw: OnnxRawInferenceOutput;
+  timeoutMs?: number;
 }): Promise<AnalysisResult> {
   const payload: RawModelOutputsPayload = {
     policy: Array.from(options.raw.policy),
@@ -45,11 +51,15 @@ export async function postRawOnnxOutputsForAnalysis(options: {
     payload.miscvalue = Array.from(options.raw.miscvalue);
   }
 
-  const response = await fetch(apiUrl(`/api/games/${options.gameId}/analyze`), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ raw_model_outputs: payload }),
-  });
+  const response = await fetchWithTimeout(
+    apiUrl(`/api/games/${options.gameId}/analyze`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ raw_model_outputs: payload }),
+    },
+    { timeoutMs: options.timeoutMs, operation: "analyze position" },
+  );
   if (!response.ok) {
     await readApiFailure(response, "Could not analyze position.");
   }
@@ -67,6 +77,7 @@ export async function postRawOnnxOutputsForAnalysis(options: {
 export async function postBrowserEngineMovePayload(options: {
   gameId: string;
   payload: BrowserEngineMovePayload;
+  timeoutMs?: number;
 }): Promise<EngineMoveResult> {
   const browserEngineMovePayload = {
     position_raw: options.payload.positionRaw,
@@ -76,11 +87,15 @@ export async function postBrowserEngineMovePayload(options: {
       raw_model_outputs: candidate.raw,
     })),
   };
-  const response = await fetch(apiUrl(`/api/games/${options.gameId}/engine-move`), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ browser_engine_move: browserEngineMovePayload }),
-  });
+  const response = await fetchWithTimeout(
+    apiUrl(`/api/games/${options.gameId}/engine-move`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ browser_engine_move: browserEngineMovePayload }),
+    },
+    { timeoutMs: options.timeoutMs, operation: "request engine move" },
+  );
   if (!response.ok) {
     await readApiFailure(response, "Could not request engine move.");
   }

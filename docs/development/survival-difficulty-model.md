@@ -1,97 +1,191 @@
-# Survival Difficulty Model (Quick Guide)
+# Survival Scoring, Thresholds, and Difficulty
 
-This page explains how engine move selection worked before, what it does now, and how to tune it without getting lost.
+This page explains the **two ways** Survival Go can steer KataGo/ONNX play, which path the **browser app uses today**, and how ownership metrics still matter for API semantics, resign logic, and future faster inference.
 
-## Before (v1): simple and intuitive
+## Two approaches (read this first)
 
-Previous engine move selection was:
+Survival Go reuses a normal Go model without retraining. The project can align that model to the Survival objective in two different ways. They are complementary, not interchangeable labels for the same code path.
 
-1. Rank candidate moves by the Survival objective.
-2. Usually pick rank #1.
-3. Sometimes skip rank #1 and choose from the rest using `randomness`.
+| | **Ownership-heavy** | **Komi-heavy** |
+|---|---------------------|----------------|
+| **Core signal** | Per-position **ownership head** → `p_black` per point → `min_black_probability` (bottleneck) and `unresolved_count` | **Value heads** under **extreme komi** (`345.5`) → MCTS **winrate** and **score lead** per candidate |
+| **Typical move ranking** | Rank candidates by side-aware Survival on **each candidate’s** ownership (raise floor for Black, lower for White) | Rank candidates by **MCTS child winrate** (and optional score/policy anchors); komi already baked into search |
+| **Inference cost** | **High** — one full inference (or more) per candidate you want to score | **Lower** — one MCTS search returns many children with winrate/score; no second pass per move for ownership |
+| **Where it lives today** | Analyze API payloads, resign checks, `move_selector` **fallback** when `winrate` is absent, tests/fixtures | **Production browser** engine-move path (`BrowserOnnxProvider` + backend rerank) and the current reasoning panel display |
+| **Best fit** | Server/desktop when latency and compute are cheap; augmenting or validating KataGo suggestions; faithful “weakest point” semantics | Browser ONNX where per-candidate ownership reranking is too slow |
 
-This was easy to reason about and worked well for coarse Easy/Hard separation.
+```text
+Ownership-heavy (original design)
+  policy top-N → for each move: infer → ownership → min p_black → rank → pick
 
-## Now (v2): controlled variety without obvious blunders
+Komi-heavy (current browser default)
+  MCTS @ komi 345.5 → children expose winrate/score_lead → backend rank → pick
+  (root ownership once for metrics / resign only)
+```
 
-Current selection pipeline:
+**Do not mix them up in one sentence:** the live site’s **engine move** is komi-heavy for ranking, and the current metrics panel (`EngineReasoning`) is also komi-heavy in presentation (`winrate` + `score_lead`). Ownership-heavy values are still produced in API responses and used for root resign checks.
 
-1. **Rank** all candidates by a composite score.
-2. **Filter** candidates below `best_score - blunder_margin`.
-3. **Select**:
-   - deterministic top candidate when `temperature == 0`
-   - softmax sampling over filtered candidates when `temperature > 0`
+---
 
-Implementation: `backend/app/engine/move_selector.py`.
+## Ownership-heavy approach
 
-## Composite score (what is being optimized)
+### Idea
 
-For each candidate, the scorer combines:
+KataGo already predicts who will own each intersection. Survival Go treats the **minimum Black ownership** on the board as the strategic bottleneck:
 
-- **Survival term** (side-aware core objective)
-  - Black prefers higher `min_black_probability`
-  - White prefers lower `min_black_probability` (implemented as `1 - min_black_probability`)
-- **Policy term** (KataGo prior plausibility)
-  - normalized by the best policy among current candidates
-- **Score term** (stability anchor from KataGo `scoreLead`)
-  - normalized into `[0, 1]` around `0.5`
+- **Black (Survival attacker):** prefer moves that **raise** `min_black_probability`.
+- **White (defender):** prefer moves that **lower** it.
 
-Then anchors and awareness are blended:
+`unresolved_count` counts points with `p_black < SURVIVAL_THRESHOLD` (default `0.95`). **`survival_score` equals that count** (lower is better for Black in this framing). See `backend/app/engine/evaluator.py`.
 
-- `policy_anchor` and `score_anchor` control how much policy/score terms pull the ranking.
-- `variant_awareness` controls how strongly pure Survival dominates vs anchored behavior.
+This matches the product description in `README.md` and is the most direct encoding of “own every point vs keep one point alive.”
 
-Difficulty schema lives in `backend/app/difficulty.py`.
+### Historical browser path (superseded for engine-move)
 
-## Why we changed
+Early browser ONNX (phases 7.2–7.3) ran **root inference + per-candidate child inference**, posted each child’s raw `ownership` to the backend, and reranked by Survival metrics. That loop was removed when Kaya MCTS landed (§ 7.7): too many sequential runs for acceptable latency.
 
-Goal: make difficulty levels feel like different player profiles, not only "best move with random mistakes."
+### What still uses ownership-heavy semantics today
 
-- **Easy/Normal**: plausible but imperfect, with variation.
-- **Hard**: more objective-focused, less variety.
-- **Impossible**: near-pure Survival objective.
+| Use | Path |
+|-----|------|
+| **Position metrics / debug API** | `POST .../analyze` — full board `p_black`, `survival_score`, `metrics` |
+| **Engine resign** | Root ownership only — `min_black_probability < 1%` (Black engine) or `> 99%` (White engine); `backend/app/engine/resignation.py` |
+| **Candidate ranking fallback** | `move_selector._ranking_term` uses `_survival_term` when a candidate has **no** `winrate` (unit tests, legacy payloads) |
+| **Frontend wiring (not rendered panel)** | `transport.ts` and provider mappings still carry `survival_score` + `metrics`, but `EngineReasoning.tsx` currently renders winrate/score only |
 
-The v2 model keeps variation but prevents obviously bad moves via `blunder_margin`.
+### When to prefer it again
 
-## Practical tuning (recommended mental model)
+- **Desktop / native** (e.g. future Tauri with GPU): enough throughput to restore per-candidate ownership evaluation or hybrid scoring.
+- **Augmenting KataGo:** use ownership as a **second opinion** on policy/MCTS shortlists (e.g. penalize moves that leave a very low `min_black_probability` even if winrate looks good under extreme komi).
+- **Composite difficulty:** ownership Survival term can stay in `move_selector` as an explicit `_survival_term` alongside winrate/score anchors when per-candidate `min_black_probability` is available again.
 
-Use these three knobs first:
+Implementation hooks already exist: `CandidateMove.min_black_probability`, `_survival_term`, and `evaluate_survival_position` — production engine-move payloads today leave candidate `min_black_probability` at placeholders because children are not ownership-scored.
 
-- `variant_awareness`: objective focus vs human-like anchors.
-- `blunder_margin`: how far from best score a move can be and still be considered.
-- `temperature`: how much variety appears among non-blunder candidates.
+### `SURVIVAL_THRESHOLD` (ownership-heavy tuning)
 
-Secondary knobs:
+Environment variable: `SURVIVAL_THRESHOLD` (default `0.95`, range `(0, 1]`). Loaded in `backend/app/config.py`; exposed on `/health`.
 
-- `policy_anchor`: increase for "more plausible KataGo-like move choice."
-- `score_anchor`: increase for globally stable/score-aware behavior.
-- `max_visits`: more search strength, more latency.
-- `top_n`: larger candidate pool for ranking/filtering.
+| Controls | Does **not** control |
+|----------|----------------------|
+| `unresolved_count` / `survival_score` on analyze | Engine-move **ranking** in the browser (MCTS winrate) |
+| Strictness of ownership semantics in API outputs | Resign thresholds (fixed `0.01` / `0.99` on `min_black_probability`) |
 
-## Threshold and Survival semantics
+| Raise threshold (e.g. `0.98`) | Lower threshold (e.g. `0.90`) |
+|-------------------------------|-------------------------------|
+| Fewer unresolved points; stricter bar | More unresolved points; softer bar |
 
-Survival evaluation uses `SURVIVAL_THRESHOLD` (env var) to count unresolved points:
+Deploy notes: [environment.md](environment.md).
 
-- unresolved if `p_black < threshold`
-- `survival_score = unresolved_count`
-- `min_black_probability` is the bottleneck metric used by selector side logic
+---
 
-Changing threshold changes the strictness of "resolved ownership" across all evaluations.
+## Komi-heavy approach (current browser inference)
+
+### Idea
+
+Under **Chinese area scoring**, the smallest corner White can live in is **8 points**. On 19×19, Black’s Survival goal maps to holding White to ≤ 7 points area-wide — modeled as **komi `345.5`** in KataGo featurization so the **existing value and score heads** optimize the asymmetric game without new weights. See [CONTRIBUTORS.md](../../CONTRIBUTORS.md).
+
+Constant: `ENGINE_EVAL_KOMI = 345.5` in `frontend/src/lib/analysis/providers/BrowserOnnxProvider.ts` (not match komi).
+
+### Pipeline (production engine-move)
+
+1. **Featurization** — `onnx-featurization.ts` encodes `selfKomi = -pla * komi` (KataGo convention).
+2. **Search** — `OnnxEngine` / `runMCTS` at that komi; children expose `winrate` and `score_lead` (`value` / `miscvalue` heads).
+3. **Shortlist** — browser sends top **12** legal children by root visit/policy (`ENGINE_MOVE_POLICY_CANDIDATE_COUNT`).
+4. **Backend rerank** — `rank_candidates_for_side` uses **`_ranking_term` → winrate first**, then composite blend with policy/score anchors (`move_selector.py`). Per-candidate ownership is **not** recomputed.
+
+Root position still gets **one** ownership decode for metrics and resign; response `survival_score` / `metrics` describe the **root**, not the played child’s ownership rerank.
+
+### What the panel actually shows today
+
+The right-side reasoning panel in `frontend/src/features/game/EngineReasoning.tsx` renders:
+
+- **Position analysis:** `"Your win rate"` and `"Score"` from `formatPositionAnalysis(...)`
+- **Candidate table:** sorted/displayed by per-candidate `winrate` then `score_lead`
+
+It does **not** currently render `survival_score`, `unresolved_count`, or `min_black_probability`, even though those values are available in API/provider payloads.
+
+### Why the browser uses komi-heavy for moves
+
+Contributor note: extreme komi **reduces reliance on expensive ownership-based candidate reranking** in the browser path while keeping standard ONNX+MCTS. One batched search replaces N extra inferences per candidate.
+
+Tradeoff: move choice is only as Survival-faithful as the value heads are under `345.5`; ownership metrics remain the honest check for “weakest point” on the current board.
+
+### Komi-heavy tuning (difficulty v2)
+
+Same composite pipeline as before, but the **primary ranking term is MCTS winrate**, not ownership:
+
+1. **Rank** by composite score (winrate + optional policy/score anchors + `variant_awareness`).
+2. **Filter** `best - blunder_margin`.
+3. **Select** — deterministic if `temperature == 0`, else softmax among survivors.
+
+Knobs in `backend/app/difficulty.py` / setup UI:
+
+| Knob | Role |
+|------|------|
+| `variant_awareness` | Objective focus vs anchored blend |
+| `blunder_margin` | Drop clearly worse candidates |
+| `temperature` | Variety among non-blunders |
+| `policy_anchor` | Pull toward plausible KataGo priors |
+| `score_anchor` | Stabilize under extreme-komi score head |
+| `max_visits` | MCTS strength vs latency |
+| `top_n` | Shortlist size returned to UI |
+
+**v1 (ownership-ranked moves):** rank by Survival on each candidate → usually pick #1 → occasional `randomness`. **v2 (today):** composite + blunder filter + temperature; ranking term is winrate on the hot path.
+
+---
+
+## API paths side by side
+
+### `POST .../analyze` — ownership-heavy metrics
+
+1. Browser runs inference at `ENGINE_EVAL_KOMI` (same featurization as play).
+2. Backend: policy softmax, ownership → `p_black`, `evaluate_survival_position` with `SURVIVAL_THRESHOLD`.
+3. Response: `survival_score`, `metrics`, optional `winrate` / `score_lead` (informational).
+
+Use for board-wide Survival semantics and debugging. Note: the current frontend panel does not display these ownership metrics yet.
+
+### `POST .../engine-move` — komi-heavy ranking
+
+1. Browser MCTS → root raw tensors + top children with `value` / `miscvalue`.
+2. Backend: root ownership for **resign**; candidates from **winrate** / `score_lead`; composite rerank → play move.
+3. Response metrics from **root** ownership; current UI panel displays winrate/score labels and winrate/score-based candidate ordering.
+
+---
+
+## Future: combining both (e.g. desktop)
+
+Not implemented as a single “hybrid mode” switch today, but the codebase is structured for it:
+
+```text
+MCTS @ komi 345.5  →  shortlist
+        +
+Per-candidate ownership infer  →  min_black_probability per move
+        →
+Composite score: winrate + survival_term + policy/score anchors
+```
+
+When inference is no longer browser-bound, restoring ownership per candidate is the straightforward way to **augment** komi-heavy MCTS without abandoning either signal. `move_selector` already defines both `_survival_term` and winrate-based `_ranking_term`; wiring real `min_black_probability` on each `CandidateMove` is the main integration step.
+
+---
 
 ## Glossary
 
-- **Candidate**: a move from KataGo `moveInfos` considered by the engine.
-- **Survival term**: side-aware objective component derived from `min_black_probability`.
-- **Policy term**: normalized KataGo prior probability for a move.
-- **Score term**: normalized `scoreLead` anchor.
-- **Composite score**: blended utility used for ranking candidates.
-- **Blunder filter**: removes candidates below `best - blunder_margin`.
-- **Temperature**: softmax randomness over filtered candidates (`0` = deterministic).
-- **Variant awareness**: weight of pure Survival objective in composite scoring.
-- **Top N**: number of highest-ranked candidates kept before final selection.
+- **Ownership-heavy:** rank/evaluate using `p_black` / `min_black_probability` / `unresolved_count`.
+- **Komi-heavy:** steer search and ranking via extreme komi + value heads (winrate, score lead).
+- **`p_black`:** per-point Black ownership probability after decoding `[-1, 1]` model output.
+- **Survival term:** side-aware utility from `min_black_probability` (`_survival_term`).
+- **Ranking term:** winrate-first on engine-move; falls back to Survival term without winrate.
+- **Extreme komi (`345.5`):** featurization komi for Survival-aligned value optimization.
+- **Composite score:** blended utility for final candidate order.
+- **Top N:** ranked shortlist size after filtering (`DEFAULT_TOP_N` / game difficulty).
 
 ## Old-to-new mapping
 
-- Old `randomness` maps to new `temperature` for backward compatibility.
-- If old payloads omit new fields, backend compatibility mapping fills defaults.
+- Old `randomness` → `temperature`.
+- Omitted difficulty fields → backend defaults via compatibility mapping.
 
+## See also
+
+- [API reference](../api-reference.md)
+- [Browser inference design](browser-inference-design.md)
+- [environment.md](environment.md)

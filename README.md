@@ -54,6 +54,7 @@ This repository includes:
 - **Architecture:** Layered layout and boundaries described in `docs/architecture.md` (thin handlers, focused services).
 - **Frontend organization:** React app is split into `features/` UI areas and `lib/` domain modules (`analysis`, `api`, `go`) with a shared `@/*` import alias.
 - **User flows:** Journey templates under `docs/user_flows/`; log new flows in `docs/user_flows/index.md`.
+- **HTTP API:** Backend owns game state and Survival semantics; the browser POSTs raw ONNX tensors for analysis and engine moves. Full endpoint reference: [`docs/api-reference.md`](docs/api-reference.md) (interactive OpenAPI at `/docs` when the backend is running).
 
 ## Core Idea
 
@@ -80,8 +81,10 @@ This repository is licensed under the [GNU Affero General Public License v3.0 or
 
 - **Contributors and acknowledgments:** `CONTRIBUTORS.md`
 - **Favicon attribution (Twemoji):** `docs/development/favicon-attribution.txt`
+- **API reference (endpoints, payloads, errors):** `docs/api-reference.md`
 - **Environment variables:** `docs/development/environment.md`
 - **Local run:** `docs/development/local-run.md`
+- **Local troubleshooting:** `docs/development/troubleshooting.md`
 - **Browser inference design (KataGo via ONNX):** `docs/development/browser-inference-design.md`
 - **ONNX model artifact variants (`fp32` / `uint8`):** `docs/development/onnx-model-artifacts.md`
 - **Browser inference rollout/operations:** `docs/operations/browser-inference-rollout-runbook.md`
@@ -95,9 +98,9 @@ This repository is licensed under the [GNU Affero General Public License v3.0 or
 - **Cloud env and sizing:** `docs/development/cloud-env-and-sizing.md`
 - **Cloud deploy automation and smoke checks:** `docs/development/cloud-deploy-automation.md`
 - **Release checklist:** `docs/development/release-checklist.md`
-- Development workflow: `.github/instructions/development.instructions.md`
-- Testing workflow: `.github/instructions/testing.instructions.md`
+- Development workflow: `AGENTS.md`, `.cursor/rules/development.mdc`, and `.cursor/commands/continue-development.md`
+- Testing workflow: `.cursor/rules/testing.mdc` and `./scripts/run_tests.sh`
 - Architecture: `docs/architecture.md`
-- Prompt / command index: `docs/prompt_index.md`
+- Command index: `docs/prompt_index.md`
 - User flows: `docs/user_flows/`
 - Cursor commands: `.cursor/commands/` (`make-specs.md`, `make-todo.md`, `continue-development`, `close-phase`)

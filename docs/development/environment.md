@@ -15,7 +15,7 @@ Templates:
 
 | Variable | Default | Valid range | Notes |
 |----------|---------|-------------|-------|
-| `SURVIVAL_THRESHOLD` | `0.95` | `(0, 1]` | Black “wins” when min black ownership ≥ threshold; used by evaluator and AI resign heuristics. |
+| `SURVIVAL_THRESHOLD` | `0.95` | `(0, 1]` | Counts unresolved points where `p_black` is strictly below this value (`survival_score` = that count). Does not change resign thresholds (`0.01` / `0.99` on `min_black_probability`). See [survival-difficulty-model.md](survival-difficulty-model.md). |
 | `DEFAULT_TOP_N` | `8` | `≥ 1` | Default engine-move shortlist size when a game is created without custom difficulty. |
 | `CORS_ALLOW_ORIGINS` | local Vite + Docker Compose origins | comma-separated URLs | Required when the browser calls the API on another host ([cloud-frontend-static.md](cloud-frontend-static.md)). |
 
@@ -46,6 +46,7 @@ curl http://127.0.0.1:8080/health
 
 ## See also
 
+- [troubleshooting.md](troubleshooting.md) — CORS, API connectivity, health/readiness
 - [local-run.md](local-run.md) — venv, dev servers, ONNX models
 - [docker-compose.md](docker-compose.md) — optional container packaging
 - [cloud-backend-container.md](cloud-backend-container.md) — ECS/ECR backend image

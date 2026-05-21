@@ -68,6 +68,15 @@ def _check_health(ctx: _SmokeContext) -> None:
     payload = response.json()
     if payload.get("status") != "ok" or payload.get("service") != "survival-go":
         raise DeploySmokeError(f"unexpected health payload: {payload!r}")
+    if payload.get("ready") is not True:
+        raise DeploySmokeError(f"health readiness failed: {payload!r}")
+    checks = payload.get("checks")
+    if not isinstance(checks, dict):
+        raise DeploySmokeError(f"health missing checks: {payload!r}")
+    for name in ("settings", "preset_bundle"):
+        check = checks.get(name)
+        if not isinstance(check, dict) or check.get("status") != "ok":
+            raise DeploySmokeError(f"health check {name!r} failed: {checks!r}")
 
 
 def _check_presets(ctx: _SmokeContext) -> None:

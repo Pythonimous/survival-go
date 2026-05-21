@@ -69,6 +69,7 @@ Users stay on the shipped app; they automatically get the **`uint8`** model when
 
 ## Related docs
 
+- [Local troubleshooting](../development/troubleshooting.md) — developer-focused CORS, fetch, WASM, and timeout fixes.
 - [ONNX model artifacts](../development/onnx-model-artifacts.md) — `fp32` / `uint8` / optional `fp16` and default selection policy.
 - [Browser inference design](../development/browser-inference-design.md) — architecture and phases.
 - [Cloud environment and sizing](../development/cloud-env-and-sizing.md) — capacity expectations.

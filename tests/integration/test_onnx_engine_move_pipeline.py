@@ -11,10 +11,8 @@ from tests.fixtures.onnx_engine_move.loader import (
     resolve_candidate_raw,
     resolve_position_raw,
 )
-from tests.integration.conftest import first_legal_move_for_side
 from backend.app.presets.loader import get_preset_by_id
-
-pytest_plugins = ["tests.integration.test_api_lifecycle"]
+from tests.integration.conftest import first_legal_move_for_side
 
 
 def _resolve_legal_moves_for_slots(*, preset_id: str, side: str, slots: list[int]) -> list[str]:

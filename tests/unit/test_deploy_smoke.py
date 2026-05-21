@@ -42,7 +42,21 @@ def test_normalize_api_base_url_requires_http_scheme() -> None:
 def test_run_deploy_smoke_checks_health_and_presets() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/health":
-            return httpx.Response(200, json={"status": "ok", "service": "survival-go"})
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "service": "survival-go",
+                    "ready": True,
+                    "checks": {
+                        "settings": {"status": "ok"},
+                        "preset_bundle": {
+                            "status": "ok",
+                            "detail": {"preset_count": 1},
+                        },
+                    },
+                },
+            )
         if request.url.path == "/api/presets":
             return httpx.Response(200, json=[{"id": "balanced", "name": "Balanced"}])
         return httpx.Response(404)
@@ -65,7 +79,21 @@ def test_run_deploy_smoke_checks_health_and_presets() -> None:
 def test_run_deploy_smoke_checks_analyze_optional() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/health":
-            return httpx.Response(200, json={"status": "ok", "service": "survival-go"})
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "service": "survival-go",
+                    "ready": True,
+                    "checks": {
+                        "settings": {"status": "ok"},
+                        "preset_bundle": {
+                            "status": "ok",
+                            "detail": {"preset_count": 1},
+                        },
+                    },
+                },
+            )
         if request.url.path == "/api/presets":
             return httpx.Response(200, json=[{"id": "balanced", "name": "Balanced"}])
         if request.url.path == "/api/games" and request.method == "POST":
@@ -114,7 +142,21 @@ def test_run_deploy_smoke_checks_raises_on_bad_health() -> None:
 def test_run_deploy_smoke_checks_raises_when_presets_empty() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/health":
-            return httpx.Response(200, json={"status": "ok", "service": "survival-go"})
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "service": "survival-go",
+                    "ready": True,
+                    "checks": {
+                        "settings": {"status": "ok"},
+                        "preset_bundle": {
+                            "status": "ok",
+                            "detail": {"preset_count": 1},
+                        },
+                    },
+                },
+            )
         if request.url.path == "/api/presets":
             return httpx.Response(200, json=[])
         return httpx.Response(404)

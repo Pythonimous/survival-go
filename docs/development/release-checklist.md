@@ -103,6 +103,8 @@ See [docker-compose.md](docker-compose.md). Tear down with `docker compose down`
 
 ## Troubleshooting
 
+Release-time test failures:
+
 | Failure | Likely cause |
 |---------|----------------|
 | Integration API tests fail | Backend not starting; check `curl http://127.0.0.1:8000/health` |
@@ -110,6 +112,8 @@ See [docker-compose.md](docker-compose.md). Tear down with `docker compose down`
 | Lint fails | Run `pytest -m lint -v` for file/line details |
 | E2E cannot reach API | Port 8000 in use or wrong `E2E_SERVER_COMMAND`; try `E2E_SERVER_DISABLED=true` if tests self-host |
 | Broken venv shebangs | Recreate `.venv` from repo root; see [local-run.md](local-run.md) |
+
+Local app / browser setup issues (CORS, ONNX, presets, timeouts): [troubleshooting.md](troubleshooting.md).
 
 ## References
 

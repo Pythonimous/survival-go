@@ -5,6 +5,7 @@ globs:
 alwaysApply: true
 ---
 - Frame the smallest useful change before touching code.
+- Read `AGENTS.md` at the start of work and treat it as the project-state source of truth.
 - Confirm the task against `TODO.md` and revise the list if priorities shift.
 - Treat test-first as mandatory for **executable** code: write or update tests before touching production code, scripts, or configs that affect runtime behavior.
 - Do not edit implementation files until the relevant tests are in place and fail for the expected reason.
@@ -20,6 +21,7 @@ alwaysApply: true
 - Review `docs/user_flows/index.md` for affected journeys; update or add UF files when scope changes.
 - Structure code following `docs/architecture.md`: thin handlers, focused helpers, and explicit service boundaries.
 - Capture durable context in `memory.md` as you go.
+- Update `AGENTS.md` when project state, architecture boundaries, workflows, or active priorities change.
 - When adding a flow, log the identifier in the index and plan matching end-to-end coverage.
 - When the work is stable, execute `.cursor/commands/close-phase.md`.
 - Repeat the loop until the feature is ready to hand off.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import random
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from uuid import uuid4
 from sgfmill import boards
 
 from backend.app.engine.board import (
+    InvalidCoordinateError,
     StoneColor,
     format_gtp_coordinate,
     parse_gtp_coordinate,
@@ -30,6 +32,8 @@ from backend.app.engine.move_selector import (
     select_candidate_for_side,
 )
 from backend.app.difficulty import DifficultyConfig
+from backend.app.errors import ErrorCode
+from backend.app.logging import get_game_logger, log_game_event
 from backend.app.presets.loader import (
     PresetLoadError,
     get_preset_by_id,
@@ -40,9 +44,16 @@ from backend.app.presets.loader import (
 class GameServiceError(ValueError):
     """Base validation error for game operations."""
 
+    def __init__(self, message: str, *, code: ErrorCode = ErrorCode.INTERNAL_ERROR) -> None:
+        super().__init__(message)
+        self.code = code
+
 
 class GameNotFoundError(GameServiceError):
     """Raised when a game id is unknown."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, code=ErrorCode.GAME_NOT_FOUND)
 
 
 GameStatus = Literal["active", "finished"]
@@ -136,6 +147,7 @@ class InMemoryGameService:
         default_max_visits: int = 20,
         default_top_n: int = 8,
         random_source: RandomSource | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         if default_top_n < 1:
             raise ValueError("default_top_n must be at least 1")
@@ -144,6 +156,7 @@ class InMemoryGameService:
         self._default_max_visits = default_max_visits
         self._default_top_n = default_top_n
         self._random_source = random_source or random.Random()
+        self._logger = logger or get_game_logger()
 
     def list_presets(self) -> list[dict[str, object]]:
         return [preset.model_dump() for preset in list_preset_metadata()]
@@ -158,10 +171,13 @@ class InMemoryGameService:
         try:
             preset = get_preset_by_id(preset_id)
         except PresetLoadError as exc:
-            raise GameServiceError(str(exc)) from exc
+            raise GameServiceError(str(exc), code=ErrorCode.INVALID_PRESET) from exc
 
         if human_side not in ("B", "W"):
-            raise GameServiceError("human_side must be 'B' or 'W'")
+            raise GameServiceError(
+                "human_side must be 'B' or 'W'",
+                code=ErrorCode.INVALID_HUMAN_SIDE,
+            )
 
         game_id = uuid4().hex
         engine_side: StoneColor = "W" if human_side == "B" else "B"
@@ -175,39 +191,89 @@ class InMemoryGameService:
             difficulty=(difficulty or self._default_difficulty()).model_copy(deep=True),
         )
         self._games[game_id] = game
+        self._log_event(
+            logging.INFO,
+            "game.created",
+            game_id=game_id,
+            preset_id=preset.id,
+            human_side=human_side,
+            engine_side=engine_side,
+            next_to_move=game.next_to_move,
+        )
         return game
 
     def delete_game(self, game_id: str) -> None:
         game = self._games.pop(game_id, None)
         if game is None:
+            self._log_not_found(operation="delete_game", game_id=game_id)
             raise GameNotFoundError(f"game not found: {game_id}")
+        self._log_event(
+            logging.INFO,
+            "game.deleted",
+            game_id=game_id,
+            moves_played=game.moves_played,
+        )
 
     def shutdown(self) -> None:
+        count = len(self._games)
         self._games.clear()
+        self._log_event(logging.INFO, "game.shutdown", games_cleared=count)
 
     def get_game(self, game_id: str) -> GameState:
         game = self._games.get(game_id)
         if game is None:
+            self._log_not_found(operation="get_game", game_id=game_id)
             raise GameNotFoundError(f"game not found: {game_id}")
         return game
 
     def apply_human_move(self, *, game_id: str, move: str) -> GameState:
         game = self.get_game(game_id)
         if game.status == "finished":
-            raise GameServiceError("game is already finished")
+            raise GameServiceError(
+                "game is already finished",
+                code=ErrorCode.GAME_FINISHED,
+            )
         if game.next_to_move != game.human_side:
-            raise GameServiceError("it is not the human side turn")
-        self._play_move(game, move=move, side=game.human_side)
+            raise GameServiceError(
+                "it is not the human side turn",
+                code=ErrorCode.WRONG_TURN_HUMAN,
+            )
+        try:
+            self._play_move(game, move=move, side=game.human_side)
+        except GameServiceError as exc:
+            self._log_operation_failed(
+                operation="human_move",
+                game_id=game_id,
+                exc=exc,
+                move=move,
+            )
+            raise
         game.next_to_move = game.engine_side
+        self._log_event(
+            logging.INFO,
+            "game.human_move",
+            game_id=game_id,
+            move=move,
+            moves_played=game.moves_played,
+        )
         return game
 
     def apply_human_resign(self, *, game_id: str) -> GameState:
         game = self.get_game(game_id)
         if game.status == "finished":
-            raise GameServiceError("game is already finished")
+            raise GameServiceError(
+                "game is already finished",
+                code=ErrorCode.GAME_FINISHED,
+            )
         game.status = "finished"
         game.winner = game.engine_side
         game.next_to_move = game.engine_side
+        self._log_event(
+            logging.INFO,
+            "game.human_resign",
+            game_id=game_id,
+            winner=game.winner,
+        )
         return game
 
     def apply_engine_move_from_browser_payload(
@@ -222,10 +288,34 @@ class InMemoryGameService:
     ) -> EngineMoveResult:
         game = self.get_game(game_id)
         if game.status == "finished":
-            raise GameServiceError("game is already finished")
+            finished_error = GameServiceError(
+                "game is already finished",
+                code=ErrorCode.GAME_FINISHED,
+            )
+            self._log_operation_failed(
+                operation="engine_move",
+                game_id=game_id,
+                exc=finished_error,
+            )
+            raise finished_error
         if game.next_to_move != game.engine_side:
-            raise GameServiceError("it is not the engine side turn")
+            turn_error = GameServiceError(
+                "it is not the engine side turn",
+                code=ErrorCode.WRONG_TURN_ENGINE,
+            )
+            self._log_operation_failed(
+                operation="engine_move",
+                game_id=game_id,
+                exc=turn_error,
+            )
+            raise turn_error
 
+        self._log_event(
+            logging.INFO,
+            "game.engine_move.request",
+            game_id=game_id,
+            candidate_count=len(candidates),
+        )
         root = self.analyze_raw_model_outputs(
             game_id=game_id,
             policy=position_policy,
@@ -241,24 +331,28 @@ class InMemoryGameService:
             engine_side=game.engine_side,
             min_black_probability=root.metrics.min_black_probability,
         ):
-            return self._engine_resign(
+            result = self._engine_resign(
                 game,
                 evaluation=root_evaluation,
                 winrate=root.winrate,
                 score_lead=root.score_lead,
             )
+            self._log_engine_move_completed(game_id=game_id, result=result)
+            return result
 
         browser_candidates = self._ranked_candidates_from_browser_payload(
             game=game,
             candidates=candidates,
         )
-        return self._finalize_engine_move_from_candidates(
+        result = self._finalize_engine_move_from_candidates(
             game=game,
             candidates=browser_candidates,
             root_metrics=root.metrics,
             root_winrate=root.winrate,
             root_score_lead=root.score_lead,
         )
+        self._log_engine_move_completed(game_id=game_id, result=result)
+        return result
 
     def _finalize_engine_move_from_candidates(
         self,
@@ -308,7 +402,10 @@ class InMemoryGameService:
                 continue
             resolved.append(self._candidate_move_from_browser_stats(candidate))
         if not resolved:
-            raise GameServiceError("no legal engine moves available")
+            raise GameServiceError(
+                "no legal engine moves available",
+                code=ErrorCode.NO_LEGAL_ENGINE_MOVES,
+            )
         return resolved
 
     def _candidate_move_from_browser_stats(
@@ -339,22 +436,25 @@ class InMemoryGameService:
         if len(policy) < expected_policy_points:
             raise GameServiceError(
                 "raw policy length "
-                f"{len(policy)} is below required points {expected_policy_points}"
+                f"{len(policy)} is below required points {expected_policy_points}",
+                code=ErrorCode.INVALID_POLICY_LENGTH,
             )
         if len(ownership) != expected_points:
             raise GameServiceError(
                 "raw ownership length "
-                f"{len(ownership)} does not match board points {expected_points}"
+                f"{len(ownership)} does not match board points {expected_points}",
+                code=ErrorCode.INVALID_OWNERSHIP_LENGTH,
             )
         if miscvalue is not None and len(miscvalue) != 10:
             raise GameServiceError(
                 "raw miscvalue length "
-                f"{len(miscvalue)} does not match required length 10"
+                f"{len(miscvalue)} does not match required length 10",
+                code=ErrorCode.INVALID_MISCVALUE_LENGTH,
             )
         policy_probs = _softmax([float(item) for item in policy[:expected_policy_points]])
         p_black = _ownership_to_p_black(ownership)
         evaluation = evaluate_survival_position(p_black, threshold=self._survival_threshold)
-        return AnalysisResult(
+        result = AnalysisResult(
             survival_score=evaluation.survival_score,
             metrics=evaluation.metrics,
             policy=policy_probs,
@@ -362,6 +462,15 @@ class InMemoryGameService:
             score_lead=_extract_score_lead(miscvalue),
             winrate=_extract_winrate(value),
         )
+        self._log_event(
+            logging.INFO,
+            "game.analyze",
+            game_id=game_id,
+            survival_score=result.survival_score,
+            unresolved_count=result.metrics.unresolved_count,
+            min_black_probability=result.metrics.min_black_probability,
+        )
+        return result
 
     def _engine_resign(
         self,
@@ -412,11 +521,20 @@ class InMemoryGameService:
         return True
 
     def _play_move(self, game: GameState, *, move: str, side: StoneColor) -> None:
-        row, col = parse_gtp_coordinate(move, size=game.board.side)
+        try:
+            row, col = parse_gtp_coordinate(move, size=game.board.side)
+        except InvalidCoordinateError as exc:
+            raise GameServiceError(
+                f"illegal move: {move}",
+                code=ErrorCode.ILLEGAL_MOVE,
+            ) from exc
         try:
             game.board.play(row, col, to_sgfmill_color(side))
         except ValueError as exc:
-            raise GameServiceError(f"illegal move: {move}") from exc
+            raise GameServiceError(
+                f"illegal move: {move}",
+                code=ErrorCode.ILLEGAL_MOVE,
+            ) from exc
         game.moves_played += 1
         game.last_move = move
 
@@ -434,7 +552,10 @@ class InMemoryGameService:
                 random_source=self._random_source,
             )
         except ValueError as exc:
-            raise GameServiceError("no legal engine moves available") from exc
+            raise GameServiceError(
+                "no legal engine moves available",
+                code=ErrorCode.NO_LEGAL_ENGINE_MOVES,
+            ) from exc
 
     def _default_difficulty(self) -> DifficultyConfig:
         return DifficultyConfig(
@@ -442,6 +563,52 @@ class InMemoryGameService:
             top_n=self._default_top_n,
             randomness=0.0,
             temperature=0.0,
+        )
+
+    def _log_event(self, level: int, event: str, **fields: object) -> None:
+        log_game_event(self._logger, level, event, **fields)
+
+    def _log_not_found(self, *, operation: str, game_id: str) -> None:
+        self._log_event(
+            logging.WARNING,
+            "game.not_found",
+            operation=operation,
+            game_id=game_id,
+            error_type="GameNotFoundError",
+            error_code=ErrorCode.GAME_NOT_FOUND.value,
+            detail=f"game not found: {game_id}",
+        )
+
+    def _log_operation_failed(
+        self,
+        *,
+        operation: str,
+        exc: Exception,
+        game_id: str | None = None,
+        **fields: object,
+    ) -> None:
+        error_code = getattr(exc, "code", None)
+        payload: dict[str, object] = {
+            "operation": operation,
+            "error_type": type(exc).__name__,
+            "detail": str(exc),
+            **fields,
+        }
+        if error_code is not None:
+            payload["error_code"] = error_code.value
+        if game_id is not None:
+            payload["game_id"] = game_id
+        self._log_event(logging.WARNING, "game.operation_failed", **payload)
+
+    def _log_engine_move_completed(self, *, game_id: str, result: EngineMoveResult) -> None:
+        self._log_event(
+            logging.INFO,
+            "game.engine_move.completed",
+            game_id=game_id,
+            move=result.move,
+            resigned=result.resigned,
+            candidate_count=len(result.candidates),
+            survival_score=result.survival_score,
         )
 
 

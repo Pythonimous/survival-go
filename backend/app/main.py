@@ -1,17 +1,20 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.app.config import get_settings
+from backend.app.readiness import ReadinessReport, run_readiness_checks
+from backend.app.exception_handlers import register_exception_handlers
+from backend.app.logging import configure_logging
 from backend.app.difficulty import DifficultyConfig, DifficultyPreset, list_difficulty_presets
 from backend.app.engine.board import StoneColor
 from backend.app.game_service import (
     BrowserEngineMoveCandidate,
-    GameNotFoundError,
     GameState,
-    GameServiceError,
     InMemoryGameService,
 )
 
@@ -22,9 +25,33 @@ SERVER_INFERENCE_REMOVED = (
 )
 
 
+class HealthCheckResponse(BaseModel):
+    status: str
+    message: str | None = None
+    detail: dict[str, object] | None = None
+
+
 class HealthResponse(BaseModel):
-    status: str = "ok"
+    status: str
     service: str = "survival-go"
+    ready: bool
+    checks: dict[str, HealthCheckResponse]
+
+    @classmethod
+    def from_readiness(cls, report: ReadinessReport) -> "HealthResponse":
+        checks = {
+            name: HealthCheckResponse(
+                status=check.status,
+                message=check.message,
+                detail=check.detail,
+            )
+            for name, check in report.checks.items()
+        }
+        return cls(
+            status="ok" if report.ready else "unhealthy",
+            ready=report.ready,
+            checks=checks,
+        )
 
 
 class CreateGameRequest(BaseModel):
@@ -140,18 +167,17 @@ def _to_game_state_payload(
     )
 
 
-def _bad_request(detail: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
-
-
-def _not_found(detail: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
-
-
 def _register_health_route(application: FastAPI) -> None:
     @application.get("/health", response_model=HealthResponse)
-    def health_check() -> HealthResponse:
-        return HealthResponse()
+    def health_check(request: Request) -> HealthResponse | JSONResponse:
+        report: ReadinessReport = request.app.state.readiness
+        body = HealthResponse.from_readiness(report)
+        if not report.ready:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=body.model_dump(),
+            )
+        return body
 
 
 def _register_list_presets_route(
@@ -159,10 +185,7 @@ def _register_list_presets_route(
 ) -> None:
     @application.get("/api/presets")
     def list_presets() -> list[dict[str, object]]:
-        try:
-            return game_service.list_presets()
-        except GameServiceError as exc:
-            raise _bad_request(str(exc)) from exc
+        return game_service.list_presets()
 
 
 def _register_list_difficulty_presets_route(application: FastAPI) -> None:
@@ -180,24 +203,18 @@ def _register_create_game_route(
         status_code=status.HTTP_201_CREATED,
     )
     def create_game(payload: CreateGameRequest) -> CreateGameResponse:
-        try:
-            game = game_service.create_game(
-                preset_id=payload.preset_id,
-                human_side=payload.human_side,
-                difficulty=payload.difficulty,
-            )
-        except GameServiceError as exc:
-            raise _bad_request(str(exc)) from exc
+        game = game_service.create_game(
+            preset_id=payload.preset_id,
+            human_side=payload.human_side,
+            difficulty=payload.difficulty,
+        )
         return CreateGameResponse(game_id=game.game_id)
 
 
 def _register_get_game_route(application: FastAPI, game_service: InMemoryGameService) -> None:
     @application.get("/api/games/{game_id}", response_model=GameStateResponse)
     def get_game(game_id: str) -> GameStateResponse:
-        try:
-            game = game_service.get_game(game_id)
-        except GameNotFoundError as exc:
-            raise _not_found(str(exc)) from exc
+        game = game_service.get_game(game_id)
         return _to_game_state_payload(game, game_service)
 
 
@@ -206,10 +223,7 @@ def _register_delete_game_route(
 ) -> None:
     @application.delete("/api/games/{game_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_game(game_id: str) -> Response:
-        try:
-            game_service.delete_game(game_id)
-        except GameNotFoundError as exc:
-            raise _not_found(str(exc)) from exc
+        game_service.delete_game(game_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -218,13 +232,7 @@ def _register_human_move_route(
 ) -> None:
     @application.post("/api/games/{game_id}/move", response_model=MoveResponse)
     def apply_human_move(game_id: str, payload: MoveRequest) -> MoveResponse:
-        try:
-            game = game_service.apply_human_move(game_id=game_id, move=payload.move)
-        except GameNotFoundError as exc:
-            raise _not_found(str(exc)) from exc
-        except GameServiceError as exc:
-            raise _bad_request(str(exc)) from exc
-
+        game = game_service.apply_human_move(game_id=game_id, move=payload.move)
         state_payload = _to_game_state_payload(game, game_service)
         return MoveResponse(**state_payload.model_dump(), move=payload.move)
 
@@ -234,13 +242,7 @@ def _register_human_resign_route(
 ) -> None:
     @application.post("/api/games/{game_id}/resign", response_model=GameStateResponse)
     def apply_human_resign(game_id: str) -> GameStateResponse:
-        try:
-            game = game_service.apply_human_resign(game_id=game_id)
-        except GameNotFoundError as exc:
-            raise _not_found(str(exc)) from exc
-        except GameServiceError as exc:
-            raise _bad_request(str(exc)) from exc
-
+        game = game_service.apply_human_resign(game_id=game_id)
         return _to_game_state_payload(game, game_service)
 
 
@@ -249,31 +251,25 @@ def _register_engine_move_route(
 ) -> None:
     @application.post("/api/games/{game_id}/engine-move", response_model=EngineMoveResponse)
     def apply_engine_move(game_id: str, payload: EngineMoveRequest) -> EngineMoveResponse:
-        try:
-            browser_payload = payload.browser_engine_move
-            outcome = game_service.apply_engine_move_from_browser_payload(
-                game_id=game_id,
-                position_policy=browser_payload.position_raw.policy,
-                position_ownership=browser_payload.position_raw.ownership,
-                position_value=browser_payload.position_raw.value,
-                position_miscvalue=browser_payload.position_raw.miscvalue,
-                candidates=[
-                    BrowserEngineMoveCandidate(
-                        move=item.move,
-                        policy_prob=item.policy_prob,
-                        policy=item.raw_model_outputs.policy,
-                        ownership=item.raw_model_outputs.ownership,
-                        value=item.raw_model_outputs.value,
-                        miscvalue=item.raw_model_outputs.miscvalue,
-                    )
-                    for item in browser_payload.candidates
-                ],
-            )
-        except GameNotFoundError as exc:
-            raise _not_found(str(exc)) from exc
-        except GameServiceError as exc:
-            raise _bad_request(str(exc)) from exc
-
+        browser_payload = payload.browser_engine_move
+        outcome = game_service.apply_engine_move_from_browser_payload(
+            game_id=game_id,
+            position_policy=browser_payload.position_raw.policy,
+            position_ownership=browser_payload.position_raw.ownership,
+            position_value=browser_payload.position_raw.value,
+            position_miscvalue=browser_payload.position_raw.miscvalue,
+            candidates=[
+                BrowserEngineMoveCandidate(
+                    move=item.move,
+                    policy_prob=item.policy_prob,
+                    policy=item.raw_model_outputs.policy,
+                    ownership=item.raw_model_outputs.ownership,
+                    value=item.raw_model_outputs.value,
+                    miscvalue=item.raw_model_outputs.miscvalue,
+                )
+                for item in browser_payload.candidates
+            ],
+        )
         state_payload = _to_game_state_payload(outcome.game, game_service)
         return EngineMoveResponse(
             **state_payload.model_dump(),
@@ -302,19 +298,13 @@ def _register_engine_move_route(
 def _register_analyze_route(application: FastAPI, game_service: InMemoryGameService) -> None:
     @application.post("/api/games/{game_id}/analyze", response_model=AnalyzeResponse)
     def analyze_game(game_id: str, payload: AnalyzeRequest) -> AnalyzeResponse:
-        try:
-            evaluation = game_service.analyze_raw_model_outputs(
-                game_id=game_id,
-                policy=payload.raw_model_outputs.policy,
-                ownership=payload.raw_model_outputs.ownership,
-                value=payload.raw_model_outputs.value,
-                miscvalue=payload.raw_model_outputs.miscvalue,
-            )
-        except GameNotFoundError as exc:
-            raise _not_found(str(exc)) from exc
-        except GameServiceError as exc:
-            raise _bad_request(str(exc)) from exc
-
+        evaluation = game_service.analyze_raw_model_outputs(
+            game_id=game_id,
+            policy=payload.raw_model_outputs.policy,
+            ownership=payload.raw_model_outputs.ownership,
+            value=payload.raw_model_outputs.value,
+            miscvalue=payload.raw_model_outputs.miscvalue,
+        )
         return AnalyzeResponse(
             game_id=game_id,
             survival_score=evaluation.survival_score,
@@ -342,11 +332,20 @@ def _register_routes(application: FastAPI, game_service: InMemoryGameService) ->
     _register_analyze_route(application, game_service)
 
 
-def create_app(*, game_service: InMemoryGameService | None = None) -> FastAPI:
+def create_app(
+    *,
+    game_service: InMemoryGameService | None = None,
+    presets_dir: Path | None = None,
+) -> FastAPI:
     settings = get_settings()
+    configure_logging(level=settings.log_level)
     resolved_game_service = game_service or InMemoryGameService(
         survival_threshold=settings.survival_threshold,
         default_top_n=settings.default_top_n,
+    )
+    readiness_report = run_readiness_checks(
+        settings=settings,
+        presets_dir=presets_dir,
     )
 
     @asynccontextmanager
@@ -355,6 +354,8 @@ def create_app(*, game_service: InMemoryGameService | None = None) -> FastAPI:
         resolved_game_service.shutdown()
 
     application = FastAPI(title="survival-go", lifespan=lifespan)
+    application.state.readiness = readiness_report
+    register_exception_handlers(application)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,

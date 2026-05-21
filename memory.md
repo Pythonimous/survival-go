@@ -1086,3 +1086,93 @@
 - **UI:** Removed granular `turnProgressDetail` status strings from `BoardView` (keeps turn-status label only).
 - **AWS docs:** Refreshed `cloud-aws-zero-to-domain-runbook.md` for API-only backend + browser ONNX; deleted redundant `cloud-aws-ecs-full-runbook.md`; heavy-path pointers now go to `cloud-aws-ecs-topology.md`.
 - Validation: `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (279 passed), `npm --prefix frontend test -- --run` (141 passed).
+
+## Close-phase: §8 integration tests (2026-05-21)
+
+- Centralized integration fixtures in `tests/integration/conftest.py`: shared `api_client`, `PRESET_IDS`, `create_game_from_preset`, `PresetGameSetup`, ONNX payload helpers (`raw_model_outputs`, `browser_engine_move_body`).
+- Added `test_preset_game_setup.py` (parametrized preset initial state), `test_api_errors.py` (illegal move, missing game, wrong turn, invalid ONNX payloads, no legal engine candidates), `test_ownership_contract.py` (`p_black` length 361, values in `[0,1]`).
+- Refactored `test_api_lifecycle.py` to use shared conftest helpers; removed `pytest_plugins` hack from `test_onnx_engine_move_pipeline.py`.
+- Validation: `pytest tests/integration/ -m integration` (39 passed), `flake8` on touched files, `mypy .`.
+
+## Structured backend logging (2026-05-21)
+
+- Added `backend/app/logging.py`: JSON lines via `StructuredJsonFormatter`, `log_game_event()`, `configure_logging()` (stdout, `LOG_LEVEL` from settings).
+- `InMemoryGameService` emits events: `game.created`, `game.deleted`, `game.shutdown`, `game.human_move`, `game.human_resign`, `game.analyze`, `game.engine_move.request`, `game.engine_move.completed`, `game.not_found`, `game.operation_failed`.
+- `_play_move` wraps `InvalidCoordinateError` as `GameServiceError` so malformed coordinates log consistently.
+- Unit coverage: `tests/unit/test_structured_logging.py`.
+
+## Typed API errors (2026-05-21)
+
+- Added `backend/app/errors.py` (`ErrorCode`, `ApiErrorDetail`) and `backend/app/exception_handlers.py` for consistent JSON: `{"detail": {"code": "...", "message": "..."}}`.
+- `GameServiceError` / `GameNotFoundError` carry stable `code`; routes no longer wrap try/except — handlers map domain errors to 400/404.
+- Pydantic request validation returns `validation_error` (422). Frontend `readApiFailure` reads structured `detail.message`; `readApiErrorCode` exported for optional UI branching.
+- Tests: `tests/unit/test_typed_api_errors.py`, updated `tests/integration/test_api_errors.py`, `frontend/src/lib/api/errors.test.ts`.
+- Retired §9 KataGo timeout/startup TODOs (server stack removed in §7.5); replaced with ONNX-only items: API fetch timeouts + backend preset/readiness checks.
+
+## API fetch timeouts + typed client errors (2026-05-21)
+
+- `frontend/src/lib/api/clientErrors.ts`: `ApiClientError` hierarchy (`request_timeout`, `network_error`, `http_error`); UI reads `.message` via existing `Error` handling in `BoardView`.
+- `frontend/src/lib/api/fetchWithTimeout.ts`: `fetchWithTimeout` with `AbortController`, default `90_000` ms (`VITE_API_REQUEST_TIMEOUT_MS` override).
+- `readApiFailure` now throws `ApiHttpError` with `status` + backend `apiCode` when present.
+- `transport.ts` uses timed fetch for `POST .../analyze` and `POST .../engine-move` only.
+- Tests: `clientErrors.test.ts`, `fetchWithTimeout.test.ts`, extended `errors.test.ts` + `transport.test.ts`.
+
+## Backend readiness checks (2026-05-21)
+
+- `backend/app/readiness.py`: `run_readiness_checks()` validates `Settings` and loads the preset SGF bundle via `list_presets()`.
+- `GET /health` returns `ready`, per-check `checks` (`settings`, `preset_bundle`), and HTTP **503** with `status: unhealthy` when not ready.
+- `create_app(presets_dir=...)` test hook; deploy smoke asserts `ready` and both checks are `ok`.
+- Tests: `tests/unit/test_readiness.py`, extended `test_health.py` + `test_deploy_smoke.py`.
+
+## Agent state guide baseline (2026-05-21)
+
+- Added top-level `AGENTS.md` as the project-state guide for agentic development: mission, stack, architecture boundaries, workflow, test commands, high-value docs, and current open TODO focus.
+- Updated `.cursor/rules/development.mdc` to require reading `AGENTS.md` at task start and updating it when project state/workflow/priorities change.
+- Updated `.cursor/commands/continue-development.md` and `.cursor/commands/close-phase.md` so command-driven loops explicitly consume/maintain `AGENTS.md`.
+- Marked TODO item "Create AGENTS.md..." complete in `TODO.md`.
+- Scope was docs/guidance only (no executable code changes), so no test-first or runtime test gates were required.
+
+## API reference doc (2026-05-21)
+
+- Added `docs/api-reference.md`: full HTTP API (all routes, request/response JSON examples, tensor shapes, errors, session flow). Source of truth pointers to `backend/app/main.py` and `backend/app/errors.py`.
+- README stays high-level: one bullet under Scaffold Overview + References link; detailed examples moved out of README.
+- Marked TODO §10 "Document API endpoints..." complete; next polish item is Survival scoring / komi docs.
+
+## Survival scoring + komi docs (2026-05-21)
+
+- Expanded `docs/development/survival-difficulty-model.md`: ownership → `p_black` pipeline, `survival_score` = `unresolved_count`, `SURVIVAL_THRESHOLD` tuning vs resign thresholds, extreme komi `345.5` rationale, analyze vs engine-move paths (MCTS winrate rerank vs root ownership metrics).
+- Follow-up pass: reframed doc around **ownership-heavy** (original metrics/rerank/future desktop) vs **komi-heavy** (current browser engine-move), with comparison table, historical browser path, and future hybrid note.
+- Implementation-correctness follow-up: documented that `EngineReasoning` currently renders winrate/score only (position + candidates); ownership metrics (`survival_score`, `unresolved_count`, `min_black_probability`) remain in API/provider payloads but are not shown in the panel.
+- Fixed `docs/api-reference.md` examples and `survival_score` semantics (was incorrectly documented as `round(min_black × 100)`).
+- Clarified `SURVIVAL_THRESHOLD` in `docs/development/environment.md`.
+- Marked TODO §10 komi/scoring doc item complete.
+
+## User flow docs UF-1–UF-4 (2026-05-21)
+
+- Added `docs/user_flows/UF-1-survive-as-white.md` through `UF-4-start-resume-local-session.md` and refreshed `docs/user_flows/index.md` (status `ready`, dated 2026-05-21).
+- UF-3 documents current UI (win rate / score / candidate table) and notes API ownership metrics not shown in `EngineReasoning`.
+- UF-4 clarifies in-memory sessions: `GET` refresh + `DELETE` on new game; no persistence across server restart.
+- Marked TODO §10 user-flow item complete; next polish: troubleshooting section, doc audit.
+
+## Local troubleshooting guide (2026-05-21)
+
+- Added `docs/development/troubleshooting.md`: quick health/preset checks; API reachability and `VITE_API_BASE_URL`; CORS (`CORS_ALLOW_ORIGINS`); preset bundle readiness; ONNX HF/CDN/self-host fetch; WebGPU/WASM/COI and variant fallback; `VITE_API_REQUEST_TIMEOUT_MS` after local inference.
+- Linked from `local-run.md`, `README.md`, `environment.md`, `release-checklist.md`, `onnx-model-artifacts.md`, rollout runbook.
+- Marked TODO §10 troubleshooting item complete; remaining §10: doc audit/trim.
+
+## Doc audit + stale-link cleanup (2026-05-21)
+
+- Completed TODO §10 doc audit item by updating docs that referenced removed paths.
+- Replaced stale `.github/prompts/*.prompt.md` references with the current `.cursor/commands/*.md` catalog in `docs/prompt_index.md`.
+- Updated README workflow references away from missing `.github/instructions/*` files to current `AGENTS.md` + Cursor rules/commands.
+- Updated `.cursor/README.md` so it no longer claims `.github/` prompt/instruction mirrors are still present.
+- Marked TODO §10 "Audit existing documents..." complete and updated `AGENTS.md` current focus to the next open backlog item (cache busting for static assets/CDN).
+
+## Close-phase: §8–§10 integration, ops hardening, polish (2026-05-21)
+
+- **§8 Integration tests:** Shared fixtures in `tests/integration/conftest.py`; added `test_preset_game_setup.py`, `test_api_errors.py`, `test_ownership_contract.py`; refactored lifecycle/onnx pipeline tests to use helpers.
+- **§9 Non-functional:** Structured JSON logging (`backend/app/logging.py`); typed API errors (`errors.py`, `exception_handlers.py`) with frontend `readApiFailure` / `ApiClientError`; `fetchWithTimeout` + `VITE_API_REQUEST_TIMEOUT_MS` on analyze/engine-move transport; readiness checks on `GET /health` (`readiness.py`, 503 when preset bundle or settings fail).
+- **§10 Polish and docs:** `AGENTS.md` project-state guide; `docs/api-reference.md`; expanded `survival-difficulty-model.md` (ownership-heavy vs komi-heavy); UF-1–UF-4 user flows; `docs/development/troubleshooting.md`; doc audit (stale `.github` prompt links → `.cursor/commands`, README workflow pointers).
+- **Fix during close-phase:** `transport.test.ts` engine-move fixture used `number[]` (not `Float32Array`) so `tsc` build gate passes.
+- **Validation:** `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (330 passed), `npm --prefix frontend test -- --run` (162 passed), frontend `npm run build` via shudan unit gate.
+- **Next focus (§11):** cache busting for static assets on frontend deploy/CDN.

@@ -10,7 +10,7 @@ Use this guide to run the Survival Go web app on your machine and confirm the MV
 | Frontend | Presets load; board renders; human click triggers engine response |
 | ONNX | Model loads in browser (see [onnx-model-artifacts.md](onnx-model-artifacts.md)) |
 | Gameplay | Complete at least one human/engine turn pair |
-| Metrics | UI shows unresolved count and min black probability after engine move |
+| Metrics | After an engine move, analysis panel shows win rate, score, and candidate table (UF-3); API also returns ownership metrics |
 
 ## Optional: Docker Compose
 
@@ -94,6 +94,8 @@ curl http://127.0.0.1:8000/health
 
 ## See also
 
+- [troubleshooting.md](troubleshooting.md) — API/CORS, presets, ONNX fetch, WebGPU/WASM, timeouts
+- [User flow index](../user_flows/index.md) — UF-1 through UF-4 step-by-step journeys
 - [browser-inference-design.md](browser-inference-design.md) — ONNX architecture
 - [environment.md](environment.md) — backend env vars
 - [docker-compose.md](docker-compose.md) — container packaging

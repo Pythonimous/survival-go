@@ -3,92 +3,19 @@
 from __future__ import annotations
 
 import copy
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.engine.board import (
-    format_gtp_coordinate,
-    parse_gtp_coordinate,
-    to_sgfmill_color,
-)
+from backend.app.engine.board import parse_gtp_coordinate, to_sgfmill_color
 from backend.app.presets.loader import get_preset_by_id
-from tests.integration.conftest import first_legal_move_on_board
-
-
-@pytest.fixture
-def api_client() -> TestClient:
-    from backend.app.main import create_app
-
-    return TestClient(create_app())
-
-
-def _first_legal_move_for_side(preset_id: str, *, side: str) -> str:
-    preset = get_preset_by_id(preset_id)
-    board = preset.board
-    sgf_color = to_sgfmill_color(side)
-    for row in range(board.side):
-        for col in range(board.side):
-            if board.get(row, col) is not None:
-                continue
-            trial = copy.deepcopy(board)
-            try:
-                trial.play(row, col, sgf_color)
-            except ValueError:
-                continue
-            return format_gtp_coordinate(row, col, size=board.side)
-    raise AssertionError(f"no legal move available for side {side}")
-
-
-def _extract_metrics(payload: dict[str, Any]) -> dict[str, Any]:
-    metrics = payload.get("metrics")
-    if isinstance(metrics, dict):
-        return metrics
-    analysis = payload.get("analysis")
-    if isinstance(analysis, dict):
-        nested_metrics = analysis.get("metrics")
-        if isinstance(nested_metrics, dict):
-            return nested_metrics
-    raise AssertionError("response does not include metrics")
-
-
-def _raw_model_outputs(*, ownership: list[float] | None = None) -> dict[str, object]:
-    ownership_values = ownership if ownership is not None else [-0.2] + [1.0] * 360
-    return {
-        "policy": [0.0] * ((19 * 19 + 1) * 6),
-        "ownership": ownership_values,
-        "value": [0.1, -0.2, 0.3],
-        "miscvalue": [0.0] * 10,
-    }
-
-
-def _browser_engine_move_body(
-    *,
-    position_ownership: list[float] | None = None,
-    candidate_ownerships: dict[str, list[float]] | None = None,
-    candidate_moves: list[str] | None = None,
-) -> dict[str, object]:
-    position = _raw_model_outputs(ownership=position_ownership)
-    moves = candidate_moves or []
-    ownerships = candidate_ownerships or {}
-    candidates = []
-    for move in moves:
-        candidates.append(
-            {
-                "move": move,
-                "policy_prob": 0.5,
-                "raw_model_outputs": _raw_model_outputs(
-                    ownership=ownerships.get(move, [1.0] * 361),
-                ),
-            }
-        )
-    return {
-        "browser_engine_move": {
-            "position_raw": position,
-            "candidates": candidates,
-        }
-    }
+from tests.integration.conftest import (
+    browser_engine_move_body,
+    extract_metrics,
+    first_legal_move_for_side,
+    first_legal_move_on_board,
+    raw_model_outputs,
+)
 
 
 @pytest.mark.integration
@@ -118,7 +45,7 @@ def test_api_lifecycle_create_fetch_move_analyze_and_engine_move(
 ) -> None:
     preset_id = "balanced"
     human_side = get_preset_by_id(preset_id).initial_player_to_move
-    human_move = _first_legal_move_for_side(preset_id, side=human_side)
+    human_move = first_legal_move_for_side(preset_id, side=human_side)
 
     presets_response = api_client.get("/api/presets")
     assert presets_response.status_code == 200
@@ -144,10 +71,10 @@ def test_api_lifecycle_create_fetch_move_analyze_and_engine_move(
 
     analyze_response = api_client.post(
         f"/api/games/{game_id}/analyze",
-        json={"raw_model_outputs": _raw_model_outputs()},
+        json={"raw_model_outputs": raw_model_outputs()},
     )
     assert analyze_response.status_code == 200
-    metrics = _extract_metrics(analyze_response.json())
+    metrics = extract_metrics(analyze_response.json())
     assert metrics["unresolved_count"] == 1
     assert float(metrics["min_black_probability"]) == pytest.approx(0.4)
 
@@ -162,7 +89,7 @@ def test_api_lifecycle_create_fetch_move_analyze_and_engine_move(
 
     engine_move_response = api_client.post(
         f"/api/games/{game_id}/engine-move",
-        json=_browser_engine_move_body(
+        json=browser_engine_move_body(
             candidate_moves=[engine_move],
             candidate_ownerships={
                 engine_move: [-0.2] + [1.0] * 360,
@@ -214,12 +141,12 @@ def test_analyze_accepts_raw_onnx_outputs_payload(api_client: TestClient) -> Non
 
     response = api_client.post(
         f"/api/games/{game_id}/analyze",
-        json={"raw_model_outputs": _raw_model_outputs()},
+        json={"raw_model_outputs": raw_model_outputs()},
     )
 
     assert response.status_code == 200
     payload = response.json()
-    metrics = _extract_metrics(payload)
+    metrics = extract_metrics(payload)
     assert metrics["unresolved_count"] == 1
     assert float(metrics["min_black_probability"]) == pytest.approx(0.4)
     policy = payload.get("policy")
@@ -283,7 +210,7 @@ def test_engine_move_white_resigns_when_black_ownership_dominates(
 
     engine_move_response = api_client.post(
         f"/api/games/{game_id}/engine-move",
-        json=_browser_engine_move_body(position_ownership=dominant_black),
+        json=browser_engine_move_body(position_ownership=dominant_black),
     )
     assert engine_move_response.status_code == 200
     payload = engine_move_response.json()

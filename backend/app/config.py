@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     survival_threshold: float = Field(default=0.95, alias="SURVIVAL_THRESHOLD")
     default_top_n: int = Field(default=8, alias="DEFAULT_TOP_N")
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     cors_allow_origins: Annotated[
         list[str],
         NoDecode,

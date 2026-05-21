@@ -188,22 +188,35 @@ By the end of 7.7, Kaya `OnnxEngine` + `AnalysisQueue` is the **only** browser i
 Done when: `frontend/src/lib/analysis/onnx/` contains `kaya/` plus only the thin adapter/transport layer named above (no `spike*`, `engineMoveLoop*`, `decode*`, `encoder*`, legacy `runtime/*`, or legacy `capability/*` files remain); a repo-wide grep for `runOnnxSpikeInference` / `buildBrowserEngineMovePayloadFromLocalInference` / `bootstrapOnnxRuntime` / `selectOnnxExecutionProviders` returns no hits; docs describe the adopted stack honestly; and license/integration guidance is clear for third-party embedders.
 
 ## 8. Integration Tests
-- [ ] Add backend integration test fixture for deterministic test game setup from presets.
-- [ ] Add error-path integration tests for invalid move, missing game ID, and engine timeout handling.
-- [ ] Add integration test verifying ownership array contract (`p_black` length 361, values in `[0,1]`).
-Done when: integration suite validates happy path plus critical failure handling for API and KataGo boundary.
+- [x] Add backend integration test fixture for deterministic test game setup from presets.
+- [x] Add error-path integration tests for invalid move, missing game ID, and ONNX payload / engine-move failure handling.
+- [x] Add integration test verifying ownership array contract (`p_black` length 361, values in `[0,1]`).
+Done when: integration suite validates happy path plus critical failure handling for API and browser ONNX boundary.
 
 ## 9. Non-functional (logging, config, error handling)
 - [x] Implement natural difficulty curve v2 (composite scoring, blunder margin, temperature sampling, variant awareness controls) across backend + frontend.
-- [ ] Add structured backend logging for game lifecycle events, engine requests, and failures.
-- [ ] Add typed error model and consistent API error responses across endpoints.
-- [ ] Add timeout/retry boundaries around KataGo requests with actionable error messages.
-- [ ] Add startup checks that report invalid KataGo binary/config/model paths clearly.
+- [x] Add structured backend logging for game lifecycle events, engine requests, and failures.
+- [x] Add typed error model and consistent API error responses across endpoints.
+- [x] Add fetch timeouts and typed client errors for browser → API `/analyze` and `/engine-move` calls (ONNX payloads can be large; surface timeout/network failures with actionable messages).
+- [x] Add backend startup/readiness checks: preset SGF bundle loads, settings validate; report clearly via `/health` or a readiness field (no KataGo paths — ONNX runs in the browser).
 Done when: operational failures are observable, actionable, and do not crash the service unexpectedly.
 
 ## 10. Polish and Docs
-- [ ] Document API endpoints and request/response examples in `README.md`.
-- [x] Add docs for Survival scoring semantics and threshold tuning.
-- [ ] Create/update user flow docs for UF-1 to UF-4 and ensure index is updated.
-- [ ] Add troubleshooting section for common local setup issues (path mismatch, model/config mismatch, timeout).
+- [x] Create AGENTS.md describing all relevant project state for agentic development. Update any relevant .cursor skills/guidelines to use/update the file when relevant.
+- [x] Document API endpoints and request/response examples in `docs/api-reference.md` (README links to it).
+- [x] Augment docs for Survival scoring semantics and threshold tuning with komi-heavy approach.
+- [x] Create/update user flow docs for UF-1 to UF-4 and ensure index is updated.
+- [x] Add troubleshooting section for common local setup issues (API/CORS, preset load, ONNX model/CDN fetch, browser WebGPU/WASM fallback, request timeouts).
+- [x] Audit existing documents and get update/remove the outdated or irrelevant ones.
 Done when: a new local user can install, run, play a scenario, and debug setup issues using docs only.
+
+## 11. Product backlog
+- [ ] Cache busting for static assets (frontend deploy / CDN) so users pick up new builds reliably after releases.
+- [ ] Better mobile support (layout, touch, viewport) for play on phones and small tablets.
+- [ ] UX hint when **Start game** is disabled: explain that the ONNX model must finish loading/initializing first (greyed-out state is not obvious today).
+- [ ] API request authorization (make sure anyone malicious can't just get a payload and bombard the server with requests).
+- [ ] Connect structured logging to Cloudwatch.
+- [ ] Human-strength KataGo models for weaker play; upstream weights exist but likely need ONNX conversion and manifest/CDN wiring before they can ship like Kaya variants.
+- [ ] Test no-GPU / no WebGPU path: verify WASM (or weakest-variant) fallback, model load, **Start game**, and full play on devices without usable GPU acceleration.
+- [ ] Tauri for installable version with native GPU / Torch support
+- [ ] Add some sort of retry mechanism for if the move times out after the engine fetch / fails to generate on the client side for some reason.

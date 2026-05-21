@@ -136,6 +136,7 @@ The setup screen surfaces all three variants as explicit picker buttons (`Analys
 
 ## Related documentation
 
+- [Troubleshooting](./troubleshooting.md) — model fetch, CORS, WASM, API timeouts.
 - [Browser inference design](./browser-inference-design.md) — overall architecture.
 - [ONNX on S3 + CloudFront](./cloud-onnx-s3-cloudfront.md) — bucket, CDN, CORS, and EC2 rebuild for self-hosted weights.
 - [Browser inference rollout runbook](../operations/browser-inference-rollout-runbook.md) — metrics (`onnx_model_selected`, fallback rate) and troubleshooting.
