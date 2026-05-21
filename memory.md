@@ -1186,6 +1186,11 @@
 - Tests: extended `test_cloud_frontend_static.py`; `ortWasmAssets.test.ts`, `src/vite-plugin-build-id.test.ts`.
 - **Next focus (§11):** mobile layout/touch support.
 
+## Frontend display version (2026-05-21)
+
+- Footer shows `v` + `frontend/package.json` semver; currently **`1.0.0-beta.1`** until stable release.
+- Production Docker builds append git short SHA (`v1.0.0-beta.1 · abc123`).
+
 ## Docker frontend build id for EC2 (2026-05-21)
 
 - `docker/frontend/Dockerfile`: `ARG`/`ENV VITE_APP_BUILD_ID` before `npm run build`.

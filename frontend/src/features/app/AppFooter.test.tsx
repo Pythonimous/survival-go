@@ -21,7 +21,7 @@ describe("AppFooter", () => {
   it("shows the application version label", () => {
     render(<AppFooter />);
 
-    expect(screen.getByText(/^v\d+\.\d+\.\d+/)).toBeInTheDocument();
+    expect(screen.getByText(/^v\d+\.\d+\.\d+-beta\.\d+/)).toBeInTheDocument();
   });
 
   it("links to the repository and feedback channel", () => {

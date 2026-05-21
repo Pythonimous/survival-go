@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { APP_VERSION, formatAppVersionLabel } from "@/config/version";
 
 describe("formatAppVersionLabel", () => {
-  it("exposes a semver from package.json", () => {
-    expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+  it("exposes a semver pre-release from package.json", () => {
+    expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+-beta\.\d+$/);
   });
 
   it("prefixes the version with v", () => {

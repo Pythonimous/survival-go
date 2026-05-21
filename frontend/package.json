@@ -1,7 +1,7 @@
 {
   "name": "survival-go-frontend",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.0-beta.1",
   "type": "module",
   "scripts": {
     "copy-ort-wasm": "node ./scripts/copy-ort-wasm.mjs",
