@@ -43,7 +43,7 @@ def test_goban_board_component_exports_empty_sign_map() -> None:
     path = FRONTEND_DIR / "src" / "features" / "game" / "GobanBoard.tsx"
     assert path.is_file(), "GobanBoard component is required for Shudan integration"
     source = path.read_text(encoding="utf-8")
-    assert "Goban" in source
+    assert "BoundedGoban" in source
     assert "signMap" in source
     shudan_bridge = FRONTEND_DIR / "src" / "lib" / "go" / "shudan.tsx"
     assert shudan_bridge.is_file()

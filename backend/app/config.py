@@ -38,7 +38,7 @@ class Settings(BaseSettings):
         alias="API_CREATE_RATE_PER_MINUTE",
     )
     api_write_rate_per_minute: int = Field(
-        default=20,
+        default=120,
         alias="API_WRITE_RATE_PER_MINUTE",
     )
     api_max_request_body_bytes: int = Field(

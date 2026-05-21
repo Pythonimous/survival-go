@@ -123,19 +123,17 @@ export function resolveOnnxNumThreads(): number | undefined {
 }
 
 /**
- * uint8 on WebGPU is far slower than fp16/fp32 in practice (debug: ~41s per batch-8
- * `session.run`). When WebGPU is in the backend chain, use Kaya auto-pick quantization.
+ * Manual selection is strict: if the user picked a concrete variant, use it.
+ * Auto mode passes `null` and receives Kaya's runtime recommendation.
  */
 export function resolveBootstrapModelVariant(
   autoPick: AutoPick,
   userSelectedVariant: OnnxModelVariant | null,
 ): { modelVariant: OnnxModelVariant; upgradedFrom: OnnxModelVariant | null } {
-  const requested = userSelectedVariant ?? autoPick.quantization;
-  const usesWebGpu = autoPick.backendChain.includes("webgpu");
-  if (usesWebGpu && requested === "uint8") {
-    return { modelVariant: autoPick.quantization, upgradedFrom: "uint8" };
+  if (userSelectedVariant !== null) {
+    return { modelVariant: userSelectedVariant, upgradedFrom: null };
   }
-  return { modelVariant: requested, upgradedFrom: null };
+  return { modelVariant: autoPick.quantization, upgradedFrom: null };
 }
 
 export function buildKayaEngineBootstrapSelection(options: {
@@ -151,10 +149,16 @@ export function buildKayaEngineBootstrapSelection(options: {
     options.autoPick,
     options.userSelectedVariant,
   );
+  const manualUint8OnWebGpu =
+    options.userSelectedVariant === "uint8" &&
+    options.autoPick.backendChain.includes("webgpu");
+  const executionProviders = manualUint8OnWebGpu
+    ? ["wasm"]
+    : toOnnxExecutionProviders(options.autoPick.backendChain);
   return {
     modelVariant,
     modelUrl: ONNX_MODEL_ARTIFACT_URLS[modelVariant],
-    executionProviders: toOnnxExecutionProviders(options.autoPick.backendChain),
+    executionProviders,
     upgradedFrom,
   };
 }

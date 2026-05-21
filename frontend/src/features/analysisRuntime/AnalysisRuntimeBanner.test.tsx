@@ -51,6 +51,9 @@ function statusFor(
     selectedVariant: null,
     recommendedVariant: "fp32",
     pickedVariantReady: false,
+    selectionMode: "auto",
+    selectAutoMode: () => undefined,
+    selectManualMode: () => undefined,
     selectModelVariant: () => undefined,
     ...overrides,
   };

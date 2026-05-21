@@ -1,12 +1,18 @@
+import { useEffect, useRef, useState } from "react";
+
 import { emptySignMap, vertexToGtp, type MarkerMap } from "@/lib/go/coordinates";
-import { Goban, type SignMap, type Vertex } from "@/lib/go/shudan";
+import { BoundedGoban, type SignMap, type Vertex } from "@/lib/go/shudan";
+import {
+  computeBoardBounds,
+  DEFAULT_MAX_VERTEX_SIZE,
+} from "@/lib/layout/boardSizing";
 
 const BOARD_SIZE = 19;
 
 type GobanBoardProps = {
   signMap?: SignMap;
   markerMap?: MarkerMap;
-  vertexSize?: number;
+  maxVertexSize?: number;
   showCoordinates?: boolean;
   onVertexClick?: (vertex: Vertex) => void;
   onGtpClick?: (coordinate: string) => void;
@@ -15,11 +21,48 @@ type GobanBoardProps = {
 export default function GobanBoard({
   signMap = emptySignMap(BOARD_SIZE),
   markerMap,
-  vertexSize = 30,
+  maxVertexSize = DEFAULT_MAX_VERTEX_SIZE,
   showCoordinates = true,
   onVertexClick,
   onGtpClick,
 }: GobanBoardProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [bounds, setBounds] = useState(() =>
+    computeBoardBounds(
+      typeof window !== "undefined" ? window.innerWidth : 320,
+      typeof window !== "undefined" ? window.innerHeight : undefined,
+      { boardSize: BOARD_SIZE, showCoordinates },
+    ),
+  );
+
+  useEffect(() => {
+    const element = rootRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateBounds = () => {
+      const width =
+        element.clientWidth > 0 ? element.clientWidth : window.innerWidth;
+      setBounds(
+        computeBoardBounds(width, window.innerHeight, {
+          boardSize: BOARD_SIZE,
+          showCoordinates,
+        }),
+      );
+    };
+
+    updateBounds();
+    const observer = new ResizeObserver(updateBounds);
+    observer.observe(element);
+    window.addEventListener("resize", updateBounds);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateBounds);
+    };
+  }, [showCoordinates]);
+
   const handleVertexClick =
     onVertexClick || onGtpClick
       ? (_event: Event, vertex: Vertex) => {
@@ -29,12 +72,16 @@ export default function GobanBoard({
       : undefined;
 
   return (
-    <Goban
-      signMap={signMap}
-      markerMap={markerMap}
-      vertexSize={vertexSize}
-      showCoordinates={showCoordinates}
-      onVertexClick={handleVertexClick}
-    />
+    <div ref={rootRef} className="goban-board-root">
+      <BoundedGoban
+        signMap={signMap}
+        markerMap={markerMap}
+        showCoordinates={showCoordinates}
+        maxWidth={bounds.maxWidth}
+        maxHeight={bounds.maxHeight}
+        maxVertexSize={maxVertexSize}
+        onVertexClick={handleVertexClick}
+      />
+    </div>
   );
 }

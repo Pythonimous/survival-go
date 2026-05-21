@@ -14,9 +14,9 @@ from starlette.types import ASGIApp
 
 from backend.app.errors import ErrorCode, api_error_response
 
-# Conservative defaults tuned to real play (engine moves often take 10s+).
+# Conservative defaults tuned for public use without throttling normal local play.
 DEFAULT_CREATE_GAME_PER_MINUTE = 3
-DEFAULT_API_WRITE_PER_MINUTE = 20
+DEFAULT_API_WRITE_PER_MINUTE = 120
 DEFAULT_MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_ACTIVE_GAMES_GLOBAL = 50
 DEFAULT_MAX_ACTIVE_GAMES_PER_IP = 5

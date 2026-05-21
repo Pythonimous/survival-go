@@ -86,6 +86,15 @@ body {
   min-width: 0;
 }
 
+.board-area--responsive {
+  touch-action: manipulation;
+}
+
+.goban-board-root {
+  width: 100%;
+  max-width: 100%;
+}
+
 .board-area .shudan-goban {
   max-width: 100%;
   margin-top: 0.5rem;
@@ -314,6 +323,8 @@ body {
   border: 1px solid #d4d4c8;
   border-radius: 0.5rem;
   background: #fff;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .engine-reasoning h2 {
@@ -370,6 +381,53 @@ body {
 @media (max-width: 60rem) {
   .play-surface {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 40rem) {
+  .app {
+    padding: 0.5rem;
+  }
+
+  .play-foreground > h1 {
+    font-size: 1.25rem;
+    margin: 0 0 0.5rem;
+  }
+
+  .turn-indicator {
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  .board-controls {
+    gap: 0.4rem;
+  }
+
+  .board-controls button {
+    min-height: 2.75rem;
+    padding: 0.5rem 0.85rem;
+    touch-action: manipulation;
+  }
+
+  .analysis-panel {
+    margin-top: 0.25rem;
+  }
+
+  .analysis-placeholder,
+  .engine-reasoning {
+    font-size: 0.9rem;
+  }
+
+  .candidate-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .field-help__trigger {
+    width: 2rem;
+    height: 2rem;
+    font-size: 0.95rem;
   }
 }
 

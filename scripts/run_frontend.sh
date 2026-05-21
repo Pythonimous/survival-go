@@ -19,4 +19,4 @@ if [ ! -f public/coi-serviceworker.js ]; then
   npm run copy-coi-serviceworker
 fi
 
-exec npm run dev -- --host 0.0.0.0
+exec npm run dev:host

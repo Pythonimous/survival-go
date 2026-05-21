@@ -200,6 +200,32 @@ describe("BoardView", () => {
     expect(screen.getByLabelText(/analysis panel/i)).toBeInTheDocument();
   });
 
+  it("marks the board area for responsive mobile layout", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        activeGame({
+          game_id: "game-1",
+          preset_id: "balanced",
+          board_size: 19,
+          human_side: "W",
+          engine_side: "B",
+          next_to_move: "W",
+          moves_played: 0,
+          stones: [],
+        }),
+      ),
+    );
+
+    renderBoard();
+
+    const boardArea = await screen.findByLabelText(/board area/i);
+    expect(boardArea).toHaveClass("board-area--responsive");
+    expect(boardArea.querySelector(".play-surface")).toBeNull();
+    const playSurface = boardArea.closest(".play-surface");
+    expect(playSurface).not.toBeNull();
+    expect(playSurface?.firstElementChild).toBe(boardArea);
+  });
+
   it("shows whose turn it is and marks the last move on the board", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(

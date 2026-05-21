@@ -77,7 +77,7 @@ def test_frontend_nginx_defines_api_abuse_limits() -> None:
     assert "zone=api_create" in nginx
     assert "rate=3r/m" in nginx
     assert "zone=api_write" in nginx
-    assert "rate=20r/m" in nginx
+    assert "rate=120r/m" in nginx
     assert "limit_req_status 429" in nginx
     assert "client_max_body_size 8m" in nginx
     assert "location = /api/games" in nginx

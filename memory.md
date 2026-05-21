@@ -1,5 +1,13 @@
 # Project memory
 
+## Mobile play layout (2026-05-21)
+
+- **GobanBoard** now uses Shudan `BoundedGoban` inside a measured `.goban-board-root` wrapper (`ResizeObserver` + `computeBoardBounds` from `frontend/src/lib/layout/boardSizing.ts`) so 19×19 boards fit phone widths without horizontal overflow; desktop cap remains `maxVertexSize=30`.
+- **CSS** (`index.css`): `@media (max-width: 40rem)` tightens play padding, enlarges control tap targets, enables `touch-action: manipulation` on the board area, and adds horizontal scroll for candidate tables / engine reasoning.
+- **Viewport** meta adds `viewport-fit=cover` for notched devices.
+- Tests: `boardSizing.test.ts`, updated `GobanBoard` / `BoardView` tests, global `ResizeObserver` stub in `frontend/src/test/setup.ts`.
+- Validation: `npm --prefix frontend test -- --run` (180 passed).
+
 ## Favicon, PWA manifest, and live play link (2026-05-20)
 
 - Added cherry-blossom favicon set under `frontend/public/` (`.ico`, 16/32 PNG, Apple touch, Android chrome 192/512) and `site.webmanifest`; wired links in `frontend/index.html`.
@@ -1188,8 +1196,8 @@
 
 ## Frontend display version (2026-05-21)
 
-- Footer shows `v` + `frontend/package.json` semver; currently **`1.0.0-beta.2`** until stable release.
-- Production Docker builds append git short SHA (`v1.0.0-beta.2 · abc123`).
+- Footer shows `v` + `frontend/package.json` semver; currently **`1.0.0-beta.3`** until stable release.
+- Production Docker builds append git short SHA (`v1.0.0-beta.3 · abc123`).
 
 ## Docker frontend build id for EC2 (2026-05-21)
 
@@ -1209,7 +1217,23 @@
 
 ## API abuse hardening (2026-05-21)
 
-- **Edge:** `docker/frontend/nginx.conf` is now a full `/etc/nginx/nginx.conf` with `limit_req_zone` for `POST /api/games` (3/min, burst 2) and write routes (20/min, burst 8), `client_max_body_size` 8m on analyze/engine-move, client IP from `X-Forwarded-For`.
+- **Edge:** `docker/frontend/nginx.conf` is now a full `/etc/nginx/nginx.conf` with `limit_req_zone` for `POST /api/games` (3/min, burst 2) and write routes (120/min, burst 40), `client_max_body_size` 8m on analyze/engine-move, client IP from `X-Forwarded-For`.
 - **App:** `backend/app/abuse_limits.py` — `RateLimitMiddleware` mirrors limits; `InMemoryGameService` enforces `MAX_ACTIVE_GAMES_GLOBAL` / `MAX_ACTIVE_GAMES_PER_IP` on create (tracked via `X-Forwarded-For`).
 - **Errors:** `rate_limited` (429), `payload_too_large` (413), `too_many_games` (503).
 - **Config:** `API_CREATE_RATE_PER_MINUTE`, `API_WRITE_RATE_PER_MINUTE`, `API_MAX_REQUEST_BODY_BYTES`, `MAX_ACTIVE_GAMES_*` in `backend/app/config.py` and [environment.md](docs/development/environment.md).
+
+## ONNX load variant resolution + model picker (2026-05-21)
+
+- **`resolveLoadVariant.ts`:** `resolveOnnxArtifactVariantForLoad` maps user/auto pick through Kaya `probeEnvironment` + `pickConfig` before download (avoids loading fp32 when runtime will upgrade to fp16).
+- **`modelLoader.ts` / `BrowserOnnxProvider`:** use resolved artifact variant; surface upgrade in provider policy note.
+- **Model picker:** auto vs manual selection (`useAnalysisRuntimeStatus`, `AnalysisRuntimeModelPicker`); persisted in `localStorage`; compact summary when auto.
+- Tests: `resolveLoadVariant.test.ts`, extended picker/runtime tests.
+
+## Close-phase: §11 mobile + ONNX picker (2026-05-21)
+
+- **Mobile:** `BoundedGoban` + `boardSizing.ts` (`ResizeObserver`); responsive CSS (`touch-action`, tap targets, candidate scroll); `viewport-fit=cover`; LAN/mobile section in `local-run.md`.
+- **ONNX UX:** auto/manual model selection; `resolveLoadVariant` aligns download with Kaya runtime auto-config.
+- **Branding:** favicon/PWA manifest polish; `run_frontend.sh` uses `dev:host` for LAN testing.
+- **Fix during close-phase:** `AnalysisRuntimeBanner.test.tsx` mock includes `selectionMode`, `selectAutoMode`, `selectManualMode` so `tsc --noEmit` passes the shudan build gate.
+- **Validation:** `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (352 passed), `npm --prefix frontend test -- --run` (183 passed), frontend `npm run build` via shudan unit gate.
+- **Next focus (§11):** human-strength KataGo ONNX variants; no-GPU/WASM fallback verification; Start-game disabled hint; client move retry on timeout.

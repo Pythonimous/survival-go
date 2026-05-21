@@ -266,7 +266,7 @@ export default function BoardView({ gameId, onNewGame }: BoardViewProps) {
       )}
       {gameState && signMap && (
         <div className="play-surface">
-          <div className="board-area" aria-label="Board area">
+          <div className="board-area board-area--responsive" aria-label="Board area">
             {turnStatusLabel && (
               <p className="turn-indicator" role="status" aria-live="polite">
                 {turnStatusLabel}

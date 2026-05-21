@@ -18,10 +18,13 @@ function snapshot(overrides: Partial<OnnxModelLoadSnapshot> = {}): OnnxModelLoad
 function pickerProps(overrides: Partial<React.ComponentProps<typeof AnalysisRuntimeModelPicker>> = {}) {
   return {
     variants: ["fp32", "fp16", "uint8"] as readonly OnnxModelVariant[],
+    selectionMode: "manual" as const,
     selectedVariant: null,
     recommendedVariant: "fp16" as OnnxModelVariant,
     loadSnapshot: snapshot(),
     capabilityCompatible: true,
+    onSelectAutoMode: vi.fn(),
+    onSelectManualMode: vi.fn(),
     onSelectVariant: vi.fn(),
     ...overrides,
   };
@@ -31,7 +34,7 @@ describe("AnalysisRuntimeModelPicker", () => {
   it("renders one button per shipped variant", () => {
     render(<AnalysisRuntimeModelPicker {...pickerProps()} />);
 
-    const group = within(screen.getByRole("group", { name: /^model$/i }));
+    const group = within(screen.getByRole("group", { name: /^manual model$/i }));
     expect(group.getByRole("button", { name: /full precision \(fp32/i })).toBeInTheDocument();
     expect(group.getByRole("button", { name: /half precision \(fp16/i })).toBeInTheDocument();
     expect(group.getByRole("button", { name: /quantized \(uint8/i })).toBeInTheDocument();
@@ -89,11 +92,16 @@ describe("AnalysisRuntimeModelPicker", () => {
   });
 
   it("shows an idle status hint before any model is picked", () => {
-    render(<AnalysisRuntimeModelPicker {...pickerProps()} />);
+    render(<AnalysisRuntimeModelPicker {...pickerProps({ selectionMode: "manual" })} />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
       /pick a model to download before starting/i,
     );
+  });
+
+  it("shows auto idle status when auto mode is selected", () => {
+    render(<AnalysisRuntimeModelPicker {...pickerProps({ selectionMode: "auto" })} />);
+    expect(screen.getByRole("status")).toHaveTextContent(/auto mode selected/i);
   });
 
   it("shows a downloading status while the selected variant is downloading", () => {

@@ -1,26 +1,35 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_MAX_VERTEX_SIZE } from "@/lib/layout/boardSizing";
 import GobanBoard from "./GobanBoard";
 
 const captured = vi.hoisted(() => ({
   onVertexClick: undefined as
     | ((event: Event, vertex: [number, number]) => void)
     | undefined,
-  vertexSize: undefined as number | undefined,
+  maxWidth: undefined as number | undefined,
+  maxHeight: undefined as number | undefined,
+  maxVertexSize: undefined as number | undefined,
 }));
 
 vi.mock("@/lib/go/shudan", () => ({
-  Goban: ({
+  BoundedGoban: ({
     onVertexClick,
-    vertexSize,
+    maxWidth,
+    maxHeight,
+    maxVertexSize,
   }: {
     onVertexClick?: (event: Event, vertex: [number, number]) => void;
-    vertexSize?: number;
+    maxWidth?: number;
+    maxHeight?: number;
+    maxVertexSize?: number;
   }) => {
     captured.onVertexClick = onVertexClick;
-    captured.vertexSize = vertexSize;
+    captured.maxWidth = maxWidth;
+    captured.maxHeight = maxHeight;
+    captured.maxVertexSize = maxVertexSize;
     return (
       <button
         type="button"
@@ -34,10 +43,66 @@ vi.mock("@/lib/go/shudan", () => ({
 }));
 
 describe("GobanBoard", () => {
-  it("uses a larger default vertex size for board-forward layout", () => {
+  let observeTarget: Element | undefined;
+
+  beforeEach(() => {
+    observeTarget = undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserverStub {
+        private readonly callback: ResizeObserverCallback;
+
+        constructor(callback: ResizeObserverCallback) {
+          this.callback = callback;
+        }
+
+        observe(target: Element) {
+          observeTarget = target;
+          Object.defineProperty(target, "clientWidth", {
+            configurable: true,
+            value: 1200,
+          });
+          this.callback(
+            [{ target } as ResizeObserverEntry],
+            this as unknown as ResizeObserver,
+          );
+        }
+
+        disconnect() {
+          observeTarget = undefined;
+        }
+
+        unobserve() {
+          /* no-op */
+        }
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses bounded goban sizing with the desktop vertex cap on wide containers", () => {
     render(<GobanBoard />);
 
-    expect(captured.vertexSize).toBe(30);
+    expect(captured.maxWidth).toBe(1200);
+    expect(captured.maxVertexSize).toBe(DEFAULT_MAX_VERTEX_SIZE);
+  });
+
+  it("shrinks bounded goban width on narrow containers", async () => {
+    render(<GobanBoard />);
+    expect(observeTarget).toBeDefined();
+    Object.defineProperty(observeTarget!, "clientWidth", {
+      configurable: true,
+      value: 375,
+    });
+    window.dispatchEvent(new Event("resize"));
+
+    await waitFor(() => {
+      expect(captured.maxWidth).toBe(375);
+    });
+    expect(captured.maxHeight).toBeLessThanOrEqual(375);
   });
 
   it("forwards Shudan vertex clicks as GTP coordinates via onGtpClick", async () => {
@@ -54,5 +119,11 @@ describe("GobanBoard", () => {
     render(<GobanBoard />);
 
     expect(captured.onVertexClick).toBeUndefined();
+  });
+
+  it("renders a responsive root wrapper for layout measurement", () => {
+    const { container } = render(<GobanBoard />);
+
+    expect(container.querySelector(".goban-board-root")).toBeInTheDocument();
   });
 });

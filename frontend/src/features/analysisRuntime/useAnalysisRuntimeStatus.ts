@@ -13,7 +13,10 @@ import {
   getUserSelectedOnnxModelVariant,
   type OnnxModelVariant,
 } from "@/lib/analysis/runtime/modelVariant";
-import { loadOnnxModelVariant } from "@/lib/analysis/runtime/modelLoader";
+import {
+  loadOnnxModelAutoVariant,
+  loadOnnxModelVariant,
+} from "@/lib/analysis/runtime/modelLoader";
 import { subscribeAnalysisInstrumentation } from "@/lib/analysis/instrumentation/bus";
 import { pickConfig, probeEnvironment } from "@/lib/analysis/onnx/kaya/auto-config";
 
@@ -54,9 +57,12 @@ export type AnalysisRuntimeStatus = {
   inferenceBlocked: boolean;
   startDisabled: boolean;
   modelVariants: readonly OnnxModelVariant[];
+  selectionMode: "auto" | "manual";
   selectedVariant: OnnxModelVariant | null;
   recommendedVariant: OnnxModelVariant;
   pickedVariantReady: boolean;
+  selectAutoMode: () => void;
+  selectManualMode: () => void;
   selectModelVariant: (variant: OnnxModelVariant) => void;
 };
 
@@ -130,6 +136,9 @@ export function useAnalysisRuntimeStatus(): AnalysisRuntimeStatus {
   const [loadSnapshot, setLoadSnapshot] = useState(getOnnxModelLoadSnapshot);
   const [selectedVariant, setSelectedVariant] = useState<OnnxModelVariant | null>(
     () => getUserSelectedOnnxModelVariant(),
+  );
+  const [selectionMode, setSelectionMode] = useState<"auto" | "manual">(() =>
+    getUserSelectedOnnxModelVariant() === null ? "auto" : "manual",
   );
 
   useEffect(() => {
@@ -219,17 +228,30 @@ export function useAnalysisRuntimeStatus(): AnalysisRuntimeStatus {
     return unsubscribe;
   }, []);
 
+  const selectAutoMode = useCallback(() => {
+    setSelectionMode("auto");
+    setSelectedVariant(null);
+    void loadOnnxModelAutoVariant();
+  }, []);
+
+  const selectManualMode = useCallback(() => {
+    setSelectionMode("manual");
+  }, []);
+
   const selectModelVariant = useCallback((variant: OnnxModelVariant) => {
+    setSelectionMode("manual");
     setSelectedVariant(variant);
     void loadOnnxModelVariant(variant);
   }, []);
 
   const load = describeModelLoadSnapshot(loadSnapshot);
   const inferenceBlocked = !capability.compatible;
+  const expectedReadyVariant =
+    selectionMode === "manual" ? selectedVariant : recommendedVariant;
   const pickedVariantReady =
-    selectedVariant !== null &&
+    expectedReadyVariant !== null &&
     loadSnapshot.phase === "ready" &&
-    loadSnapshot.variant === selectedVariant;
+    loadSnapshot.variant === expectedReadyVariant;
   const startDisabled = inferenceBlocked || !pickedVariantReady;
 
   return {
@@ -241,9 +263,12 @@ export function useAnalysisRuntimeStatus(): AnalysisRuntimeStatus {
     inferenceBlocked,
     startDisabled,
     modelVariants: ONNX_MODEL_VARIANTS,
+    selectionMode,
     selectedVariant,
     recommendedVariant,
     pickedVariantReady,
+    selectAutoMode,
+    selectManualMode,
     selectModelVariant,
   };
 }

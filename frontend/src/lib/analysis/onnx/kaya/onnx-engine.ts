@@ -55,7 +55,6 @@ export class OnnxEngine extends Engine {
   private modelSource: { buffer?: ArrayBuffer; url?: string } | null = null;
   private gpu: GpuBufferState = createEmptyGpuState();
   private lastInferenceRunCount = 0;
-  private agentLoggedInferenceBackend = false;
 
   /** WebGPU device reference for error scope checking (null if not using WebGPU). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -332,8 +331,6 @@ export class OnnxEngine extends Engine {
       batchSize,
       size
     );
-
-    if (!this.agentLoggedInferenceBackend) this.agentLoggedInferenceBackend = true;
 
     this.gpuDevice?.pushErrorScope('validation');
     const results = await this.session!.run({ bin_input: binTensor, global_input: globalTensor });

@@ -10,19 +10,25 @@ import {
 } from "@/lib/analysis/runtime/loadProgress";
 import { clearUserSelectedOnnxModelVariant } from "@/lib/analysis/runtime/modelVariant";
 
-const { loadOnnxModelVariantMock } = vi.hoisted(() => ({
+const { loadOnnxModelVariantMock, loadOnnxModelAutoVariantMock } = vi.hoisted(() => ({
   loadOnnxModelVariantMock: vi.fn(),
+  loadOnnxModelAutoVariantMock: vi.fn(),
 }));
 
 vi.mock("@/lib/analysis/runtime/modelLoader", () => ({
   warmupOnnxModelSession: vi.fn(async () => undefined),
   resetOnnxWarmupForTests: vi.fn(),
+  loadOnnxModelAutoVariant: loadOnnxModelAutoVariantMock,
   loadOnnxModelVariant: loadOnnxModelVariantMock,
 }));
 
 loadOnnxModelVariantMock.mockImplementation(async (variant: "fp32" | "fp16" | "uint8") => {
   reportOnnxModelDownloadStarted(`/models/kaya.${variant}.onnx`, variant);
   reportOnnxModelReady(`/models/kaya.${variant}.onnx`, variant);
+});
+loadOnnxModelAutoVariantMock.mockImplementation(async () => {
+  reportOnnxModelDownloadStarted("/models/kaya.fp16.onnx", "fp16");
+  reportOnnxModelReady("/models/kaya.fp16.onnx", "fp16");
 });
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -67,6 +73,7 @@ function mockPresetsResponses(): void {
 }
 
 async function pickFp16Model(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole("button", { name: /manual/i }));
   await user.click(screen.getByRole("button", { name: /half precision \(fp16/i }));
   await waitFor(() =>
     expect(screen.getByRole("button", { name: /start game/i })).not.toBeDisabled(),
@@ -79,9 +86,14 @@ describe("App", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     loadOnnxModelVariantMock.mockClear();
+    loadOnnxModelAutoVariantMock.mockClear();
     loadOnnxModelVariantMock.mockImplementation(async (variant: "fp32" | "fp16" | "uint8") => {
       reportOnnxModelDownloadStarted(`/models/kaya.${variant}.onnx`, variant);
       reportOnnxModelReady(`/models/kaya.${variant}.onnx`, variant);
+    });
+    loadOnnxModelAutoVariantMock.mockImplementation(async () => {
+      reportOnnxModelDownloadStarted("/models/kaya.fp16.onnx", "fp16");
+      reportOnnxModelReady("/models/kaya.fp16.onnx", "fp16");
     });
     resetOnnxModelLoadSnapshotForTests();
     clearUserSelectedOnnxModelVariant();
@@ -114,6 +126,7 @@ describe("App", () => {
     const startButton = screen.getByRole("button", { name: /start game/i });
     expect(startButton).toBeDisabled();
 
+    await user.click(screen.getByRole("button", { name: /manual/i }));
     await user.click(screen.getByRole("button", { name: /half precision \(fp16/i }));
 
     await waitFor(() => expect(loadOnnxModelVariantMock).toHaveBeenCalledWith("fp16"));

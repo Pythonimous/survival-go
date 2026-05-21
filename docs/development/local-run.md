@@ -86,6 +86,24 @@ source .venv/bin/activate
 
 Open http://127.0.0.1:5173/
 
+`./scripts/run_frontend.sh` already runs `npm run dev:host` (binds `0.0.0.0` so phones on the same LAN can reach the dev server).
+
+### Mobile / responsive layout
+
+**Emulation (fastest):** open the app in Chrome or Edge, press `Ctrl+Shift+M` (`Cmd+Shift+M` on Mac) for the device toolbar, pick a phone preset (e.g. iPhone 14, ~375px wide), and reload once so the goban resizes.
+
+**Real phone on LAN:**
+
+1. Start backend and frontend as above (`dev:host` or `./scripts/run_frontend.sh`).
+2. Note your machine’s LAN IP (e.g. `192.168.1.42`) and open `http://<LAN-IP>:5173/` on the phone (same Wi‑Fi).
+3. If presets fail to load, add that origin to backend CORS, e.g. in `.env`:
+   ```bash
+   CORS_ALLOW_ORIGINS=http://127.0.0.1:5173,http://localhost:5173,http://192.168.1.42:5173
+   ```
+   Restart the backend after changing CORS.
+
+**Production build on LAN:** `npm run build && npm run preview:host` (same CORS note if the API is on another host).
+
 ## Quick health check
 
 ```bash

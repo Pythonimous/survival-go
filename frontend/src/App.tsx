@@ -96,15 +96,18 @@ export default function App() {
       <main className={`app ${isInSetup ? "app--setup" : "app--playing"}`}>
         {isInSetup ? (
           <section className="setup-foreground" aria-label="Game setup">
-            <h1>Survival KataGo</h1>
+            <h1>Survival Go</h1>
             <p>Go training variant focused on total board ownership.</p>
             <AnalysisRuntimeBanner status={analysisRuntimeStatus} />
             <AnalysisRuntimeModelPicker
               variants={analysisRuntimeStatus.modelVariants}
+              selectionMode={analysisRuntimeStatus.selectionMode}
               selectedVariant={analysisRuntimeStatus.selectedVariant}
               recommendedVariant={analysisRuntimeStatus.recommendedVariant}
               loadSnapshot={analysisRuntimeStatus.loadSnapshot}
               capabilityCompatible={!analysisRuntimeStatus.inferenceBlocked}
+              onSelectAutoMode={analysisRuntimeStatus.selectAutoMode}
+              onSelectManualMode={analysisRuntimeStatus.selectManualMode}
               onSelectVariant={analysisRuntimeStatus.selectModelVariant}
             />
             {presetsLoading ? (
@@ -121,7 +124,7 @@ export default function App() {
           </section>
         ) : (
           <section className="play-foreground" aria-label="Game board stage">
-            <h1>Survival KataGo</h1>
+            <h1>Survival Go</h1>
             <BoardView
               gameId={gameId}
               onNewGame={async () => {

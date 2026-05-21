@@ -83,7 +83,7 @@ def test_settings_loads_abuse_limit_defaults() -> None:
     settings = Settings()
 
     assert settings.api_create_rate_per_minute == 3
-    assert settings.api_write_rate_per_minute == 20
+    assert settings.api_write_rate_per_minute == 120
     assert settings.api_max_request_body_bytes == 8 * 1024 * 1024
     assert settings.max_active_games_global == 50
     assert settings.max_active_games_per_ip == 5

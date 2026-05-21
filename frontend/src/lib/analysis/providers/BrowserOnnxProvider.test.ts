@@ -86,7 +86,7 @@ describe("BrowserOnnxProvider", () => {
     expect(selection.upgradedFrom).toBeNull();
   });
 
-  it("upgrades uint8 to auto-pick quantization when WebGPU is available", () => {
+  it("honors explicit uint8 manual selection when WebGPU is available", () => {
     const autoPick: AutoPick = {
       modelId: "kata1-b28-latest",
       quantization: "fp16",
@@ -99,9 +99,10 @@ describe("BrowserOnnxProvider", () => {
       userSelectedVariant: "uint8",
     });
 
-    expect(selection.modelVariant).toBe("fp16");
-    expect(selection.modelUrl).toBe(ONNX_MODEL_ARTIFACT_URLS.fp16);
-    expect(selection.upgradedFrom).toBe("uint8");
+    expect(selection.modelVariant).toBe("uint8");
+    expect(selection.modelUrl).toBe(ONNX_MODEL_ARTIFACT_URLS.uint8);
+    expect(selection.executionProviders).toEqual(["wasm"]);
+    expect(selection.upgradedFrom).toBeNull();
   });
 
   it("falls back to wasm when auto-pick has no web backend", () => {

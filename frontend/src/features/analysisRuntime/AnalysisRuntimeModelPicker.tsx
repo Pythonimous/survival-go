@@ -31,24 +31,31 @@ const VARIANT_DESCRIPTORS: Record<OnnxModelVariant, VariantDescriptor> = {
 
 type AnalysisRuntimeModelPickerProps = {
   variants: readonly OnnxModelVariant[];
+  selectionMode: "auto" | "manual";
   selectedVariant: OnnxModelVariant | null;
   recommendedVariant: OnnxModelVariant;
   loadSnapshot: OnnxModelLoadSnapshot;
   capabilityCompatible: boolean;
+  onSelectAutoMode: () => void;
+  onSelectManualMode: () => void;
   onSelectVariant: (variant: OnnxModelVariant) => void;
 };
 
 function describeStatus(
+  selectionMode: "auto" | "manual",
   selectedVariant: OnnxModelVariant | null,
+  recommendedVariant: OnnxModelVariant,
   snapshot: OnnxModelLoadSnapshot,
 ): { role: "status" | "alert"; message: string } {
   const labelFor = (variant: OnnxModelVariant | null) => variant ?? "model";
+  const targetLabel =
+    selectionMode === "auto" ? `auto (${recommendedVariant})` : labelFor(selectedVariant);
 
-  if (snapshot.phase === "error" && selectedVariant !== null) {
+  if (snapshot.phase === "error") {
     const detail = snapshot.errorMessage ? `: ${snapshot.errorMessage}` : "";
     return {
       role: "alert",
-      message: `Failed to load ${labelFor(snapshot.variant ?? selectedVariant)} model${detail}.`,
+      message: `Failed to load ${labelFor(snapshot.variant ?? selectedVariant ?? recommendedVariant)} model${detail}.`,
     };
   }
 
@@ -69,22 +76,28 @@ function describeStatus(
   if (snapshot.phase === "ready") {
     return {
       role: "status",
-      message: `${labelFor(snapshot.variant)} model ready.`,
+      message: `${labelFor(snapshot.variant)} model ready (${targetLabel}).`,
     };
   }
 
   return {
     role: "status",
-    message: "Pick a model to download before starting a game.",
+    message:
+      selectionMode === "auto"
+        ? `Auto mode selected (${recommendedVariant}). Press Auto to download and initialize.`
+        : "Manual mode selected. Pick a model to download before starting a game.",
   };
 }
 
 export default function AnalysisRuntimeModelPicker({
   variants,
+  selectionMode,
   selectedVariant,
   recommendedVariant,
   loadSnapshot,
   capabilityCompatible,
+  onSelectAutoMode,
+  onSelectManualMode,
   onSelectVariant,
 }: AnalysisRuntimeModelPickerProps) {
   if (!capabilityCompatible) {
@@ -99,19 +112,64 @@ export default function AnalysisRuntimeModelPicker({
 
   const loading =
     loadSnapshot.phase === "downloading" || loadSnapshot.phase === "initializing";
-  const { role, message } = describeStatus(selectedVariant, loadSnapshot);
+  const { role, message } = describeStatus(
+    selectionMode,
+    selectedVariant,
+    recommendedVariant,
+    loadSnapshot,
+  );
+  const autoSelected = selectionMode === "auto";
 
   return (
     <section className="analysis-runtime-picker" aria-label="Model picker">
       <header className="analysis-runtime-picker__header">
         <h2 className="analysis-runtime-picker__title">Model</h2>
         <p className="analysis-runtime-picker__hint">
-          Browser inference runs the AI locally. Pick a model to download before starting a game.
+          Browser inference runs the AI locally. Choose Auto (recommended) or Manual.
         </p>
       </header>
+      <div role="group" aria-label="Model mode" className="analysis-runtime-picker__buttons">
+        <button
+          type="button"
+          className={[
+            "analysis-runtime-picker__button",
+            autoSelected ? "analysis-runtime-picker__button--selected" : "",
+            "analysis-runtime-picker__button--recommended",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-pressed={autoSelected}
+          disabled={loading}
+          onClick={onSelectAutoMode}
+        >
+          <span className="analysis-runtime-picker__button-title">
+            Auto (recommended) · runtime pick
+          </span>
+          <span className="analysis-runtime-picker__button-blurb">
+            Uses Kaya auto-config and may choose {recommendedVariant} for this device.
+          </span>
+        </button>
+        <button
+          type="button"
+          className={[
+            "analysis-runtime-picker__button",
+            !autoSelected ? "analysis-runtime-picker__button--selected" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-pressed={!autoSelected}
+          disabled={loading}
+          onClick={onSelectManualMode}
+        >
+          <span className="analysis-runtime-picker__button-title">Manual</span>
+          <span className="analysis-runtime-picker__button-blurb">
+            Pick fp32/fp16/uint8 yourself. Manual choice is always honored.
+          </span>
+        </button>
+      </div>
       <div
         role="group"
-        aria-label="Model"
+        aria-label="Manual model"
         className="analysis-runtime-picker__buttons"
       >
         {variants.map((variant) => {
@@ -134,7 +192,7 @@ export default function AnalysisRuntimeModelPicker({
               type="button"
               className={buttonClass}
               aria-pressed={isSelected}
-              disabled={loading}
+              disabled={loading || autoSelected}
               onClick={() => onSelectVariant(variant)}
             >
               <span className="analysis-runtime-picker__button-title">
