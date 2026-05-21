@@ -15,5 +15,5 @@ This project turns that idea into a playable AI-assisted training tool.
 
 - Contributed key architectural and scoring insights that shaped the browser-compatible version of the project.
 - Suggested moving inference toward a browser/device-side architecture rather than relying only on paid cloud inference, improving accessibility and scalability.
-- Proposed the extreme-komi reformulation of the Survival Go objective. Under Chinese area scoring, the smallest unconditionally alive group is 8 points (two eyes in the corner); on 19x19, this means Black must hold White to 7 points or fewer, which corresponds to komi 345.5.
+- Proposed the extreme-komi reformulation of the Survival Go objective. Under Chinese area scoring, the smallest unconditionally alive group is 8 points (6 stones making 2 two eyes in the corner); on 19x19, this means Black must hold White to 7 points or fewer, which corresponds to komi of 345.5.
 - This made it possible to use standard KataGo/ONNX score optimization to encode the Survival objective more directly, reducing reliance on expensive ownership-based candidate reranking in the browser path.
