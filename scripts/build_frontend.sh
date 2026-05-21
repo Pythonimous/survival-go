@@ -7,6 +7,15 @@ FRONTEND_DIR="${ROOT}/frontend"
 
 cd "${FRONTEND_DIR}"
 
+if [[ -z "${VITE_APP_BUILD_ID:-}" ]]; then
+    if command -v git >/dev/null 2>&1 && git -C "${ROOT}" rev-parse --short HEAD >/dev/null 2>&1; then
+        export VITE_APP_BUILD_ID="$(git -C "${ROOT}" rev-parse --short HEAD)"
+    else
+        export VITE_APP_BUILD_ID="dev"
+    fi
+fi
+echo "Building with VITE_APP_BUILD_ID=${VITE_APP_BUILD_ID}"
+
 if [[ ! -d node_modules ]]; then
     echo "Installing frontend dependencies..."
     npm ci

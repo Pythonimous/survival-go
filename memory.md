@@ -1176,3 +1176,28 @@
 - **Fix during close-phase:** `transport.test.ts` engine-move fixture used `number[]` (not `Float32Array`) so `tsc` build gate passes.
 - **Validation:** `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (330 passed), `npm --prefix frontend test -- --run` (162 passed), frontend `npm run build` via shudan unit gate.
 - **Next focus (§11):** cache busting for static assets on frontend deploy/CDN.
+
+## §11 cache busting for static assets (2026-05-21)
+
+- `VITE_APP_BUILD_ID` set in `scripts/build_frontend.sh` (git short SHA, else `dev`); baked into bundle and used as `?v=` on `coi-serviceworker.js` (Vite `buildIdIndexHtmlPlugin`) and `/wasm/*` fetches (`ortWasmAssets.ts`).
+- `scripts/lib/frontend_static_cache.sh`: tiered S3 `Cache-Control` — `no-cache` on `index.html`, `immutable` on `assets/`, 1h on `wasm/` and coi script; `publish_frontend_s3.sh` sources it and defaults CloudFront invalidation to `/index.html`, `/coi-serviceworker.js`, `/wasm/*` (`CLOUDFRONT_INVALIDATE_ALL=1` for legacy `/*`).
+- `docker/frontend/nginx.conf` mirrors the same cache tiers for Compose/Caddy VM deploys.
+- Docs: `docs/development/cloud-frontend-static.md` cache-busting section.
+- Tests: extended `test_cloud_frontend_static.py`; `ortWasmAssets.test.ts`, `src/vite-plugin-build-id.test.ts`.
+- **Next focus (§11):** mobile layout/touch support.
+
+## Docker frontend build id for EC2 (2026-05-21)
+
+- `docker/frontend/Dockerfile`: `ARG`/`ENV VITE_APP_BUILD_ID` before `npm run build`.
+- `docker-compose.yml`: passes `VITE_APP_BUILD_ID: ${VITE_APP_BUILD_ID:-dev}` as a frontend build-arg.
+- `scripts/docker_compose.sh`: exports git short SHA (or `dev`) then runs `docker compose` — use on the production VM instead of bare `docker compose up --build`.
+
+## Close-phase: §11 cache busting + deploy build id (2026-05-21)
+
+- **Cache busting:** `VITE_APP_BUILD_ID` from `scripts/build_frontend.sh` (git short SHA, else `dev`); `vite-plugin-build-id.ts` appends `?v=` to `coi-serviceworker.js` in `index.html`; `ortWasmAssets.ts` cache-busts `/wasm/*` fetches; `scripts/lib/frontend_static_cache.sh` sets tiered S3 `Cache-Control` (`no-cache` index, `immutable` hashed assets, 1h wasm/coi); `publish_frontend_s3.sh` defaults CloudFront invalidation to `/index.html`, `/coi-serviceworker.js`, `/wasm/*`.
+- **Docker/VM:** `docker/frontend/nginx.conf` mirrors cache tiers; `Dockerfile` + `docker-compose.yml` pass build id into the image; `scripts/docker_compose.sh` wrapper for production VM builds.
+- **UI:** `frontend/src/config/version.ts` + footer version label (`v1.0.0 · <buildId>` when not `dev`).
+- **Docs:** `cloud-frontend-static.md`, `docker-compose.md`, AWS runbook notes.
+- **Fix during close-phase:** `vite-plugin-build-id.test.ts` uses a typed `IndexHtmlTransformContext` stub so `tsc --noEmit` passes the shudan build gate.
+- **Validation:** `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (335 passed), `npm --prefix frontend test -- --run` (170 passed), frontend `npm run build`.
+- **Next focus (§11):** mobile layout/touch/viewport support.

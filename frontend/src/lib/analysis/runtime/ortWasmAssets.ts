@@ -13,7 +13,7 @@ function wasmAssetBaseUrl(): string {
   }
   const base = import.meta.env.BASE_URL ?? "/";
   const normalized = base.endsWith("/") ? base : `${base}/`;
-  return new URL(`wasm/`, new URL(normalized, window.location.origin)).href;
+  return new URL("wasm/", new URL(normalized, window.location.origin)).href;
 }
 
 function assertWasmMagic(bytes: Uint8Array, relativeName: string): void {
@@ -35,8 +35,12 @@ function assertWasmMagic(bytes: Uint8Array, relativeName: string): void {
 }
 
 async function fetchWasmAsset(relativeName: string, blobType: string): Promise<Blob> {
-  const url = new URL(relativeName, wasmAssetBaseUrl()).href;
-  const response = await fetch(url, { credentials: "same-origin" });
+  const url = new URL(relativeName, wasmAssetBaseUrl());
+  const buildId = import.meta.env.VITE_APP_BUILD_ID?.trim();
+  if (buildId) {
+    url.searchParams.set("v", buildId);
+  }
+  const response = await fetch(url.href, { credentials: "same-origin" });
   if (!response.ok) {
     throw new Error(
       `Failed to load ONNX Runtime WASM asset ${relativeName} (${response.status}).`,

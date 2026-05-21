@@ -22,6 +22,28 @@ describe("ortWasmAssets", () => {
     expect(willUseMultiThreadedOrtWasm(undefined, false)).toBe(false);
   });
 
+  it("appends VITE_APP_BUILD_ID to wasm asset URLs when set", async () => {
+    vi.stubEnv("VITE_APP_BUILD_ID", "release-abc");
+    URL.createObjectURL = vi.fn(() => "blob:test") as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn() as typeof URL.revokeObjectURL;
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const href = String(url);
+      if (href.includes(".jsep.mjs")) {
+        return new Response("export {};", { status: 200 });
+      }
+      if (href.includes(".jsep.wasm")) {
+        return new Response(new Uint8Array([0x00, 0x61, 0x73, 0x6d]), {
+          status: 200,
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await preloadThreadedOrtWasmPaths();
+    const firstUrl = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(firstUrl).toContain("v=release-abc");
+  });
+
   it("preloads threaded ORT assets with JavaScript and wasm blob MIME types", async () => {
     const createdBlobs: Blob[] = [];
     URL.createObjectURL = vi.fn((blob: Blob) => {
@@ -32,13 +54,13 @@ describe("ortWasmAssets", () => {
 
     const fetchMock = vi.fn(async (url: string | URL) => {
       const href = String(url);
-      if (href.endsWith(".jsep.mjs")) {
+      if (href.includes(".jsep.mjs")) {
         return new Response("export {};", {
           status: 200,
           headers: { "Content-Type": "application/octet-stream" },
         });
       }
-      if (href.endsWith(".jsep.wasm")) {
+      if (href.includes(".jsep.wasm")) {
         return new Response(new Uint8Array([0x00, 0x61, 0x73, 0x6d]), {
           status: 200,
           headers: { "Content-Type": "application/octet-stream" },

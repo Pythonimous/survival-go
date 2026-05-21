@@ -40,6 +40,12 @@ body {
   margin-top: 0.5rem;
 }
 
+.app-footer__version {
+  margin: 0.75rem 0 0;
+  font-size: 0.75rem;
+  color: #888;
+}
+
 .app-footer a {
   color: #2d6a2d;
 }

@@ -224,7 +224,7 @@ export VITE_ONNX_MODEL_BASE_URL="https://models.example.com/kaya/v0.2.2"
 # Default filename prefix matches upstream Kaya names — omit unless you renamed files:
 # export VITE_ONNX_MODEL_FILENAME_PREFIX="kata1-b28c512nbt-s12043015936-d5616446734"
 
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+./scripts/docker_compose.sh -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 Resolved fetch URL (default prefix):

@@ -211,12 +211,13 @@ Done when: operational failures are observable, actionable, and do not crash the
 Done when: a new local user can install, run, play a scenario, and debug setup issues using docs only.
 
 ## 11. Product backlog
-- [ ] Cache busting for static assets (frontend deploy / CDN) so users pick up new builds reliably after releases.
-- [ ] Better mobile support (layout, touch, viewport) for play on phones and small tablets.
-- [ ] UX hint when **Start game** is disabled: explain that the ONNX model must finish loading/initializing first (greyed-out state is not obvious today).
+- [x] Cache busting for static assets (frontend deploy / CDN) so users pick up new builds reliably after releases.
 - [ ] API request authorization (make sure anyone malicious can't just get a payload and bombard the server with requests).
-- [ ] Connect structured logging to Cloudwatch.
+- [ ] Better mobile support (layout, touch, viewport) for play on phones and small tablets.
 - [ ] Human-strength KataGo models for weaker play; upstream weights exist but likely need ONNX conversion and manifest/CDN wiring before they can ship like Kaya variants.
 - [ ] Test no-GPU / no WebGPU path: verify WASM (or weakest-variant) fallback, model load, **Start game**, and full play on devices without usable GPU acceleration.
-- [ ] Tauri for installable version with native GPU / Torch support
+- [ ] UX hint when **Start game** is disabled: explain that the ONNX model must finish loading/initializing first (greyed-out state is not obvious today).
 - [ ] Add some sort of retry mechanism for if the move times out after the engine fetch / fails to generate on the client side for some reason.
+- [ ] Connect structured logging to Cloudwatch.
+- [ ] Finally add S3/Cloudfront support.
+- [ ] Tauri for installable version with native GPU / Torch support

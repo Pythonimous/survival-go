@@ -37,7 +37,9 @@ With API host:
 VITE_API_BASE_URL="https://api.example.com" ./scripts/build_frontend.sh
 ```
 
-Output: `frontend/dist/` (content-hashed JS/CSS; `index.html` for SPA routing).
+Output: `frontend/dist/` (content-hashed JS/CSS under `assets/`; `index.html` for SPA routing).
+
+`./scripts/build_frontend.sh` sets `VITE_APP_BUILD_ID` from the current git short SHA (or `dev` when git is unavailable). That value is baked into the bundle and appended as `?v=` on `coi-serviceworker.js` and ONNX Runtime `/wasm/*` fetches so unhashed runtime files bust browser cache after each release.
 
 Run [release-checklist.md](release-checklist.md) frontend steps (`npm test`, `npm run build`) before cloud publish.
 
@@ -54,7 +56,21 @@ VITE_API_BASE_URL="https://api.example.com" ./scripts/build_frontend.sh
 ./scripts/publish_frontend_s3.sh
 ```
 
-Script: [`scripts/publish_frontend_s3.sh`](../../scripts/publish_frontend_s3.sh). Set `DRY_RUN=1` to preview `aws s3 sync` without uploading.
+Script: [`scripts/publish_frontend_s3.sh`](../../scripts/publish_frontend_s3.sh). Set `DRY_RUN=1` to preview publish steps without uploading.
+
+### Cache busting (S3 object metadata + CloudFront)
+
+[`scripts/lib/frontend_static_cache.sh`](../../scripts/lib/frontend_static_cache.sh) applies tiered `Cache-Control` on upload:
+
+| Path | `Cache-Control` | Why |
+|------|-----------------|-----|
+| `index.html` | `no-cache, must-revalidate` | SPA shell must revalidate so new hashed `assets/` URLs are picked up |
+| `assets/*` | `public, max-age=31536000, immutable` | Vite content-hashes filenames; safe to cache for a year |
+| `wasm/*`, `coi-serviceworker.js`, other | `public, max-age=3600` | Unhashed runtime copies; short TTL + `VITE_APP_BUILD_ID` query params |
+
+When `CLOUDFRONT_DISTRIBUTION_ID` is set, the publish script invalidates `/index.html`, `/coi-serviceworker.js`, and `/wasm/*` by default. Set `CLOUDFRONT_INVALIDATE_ALL=1` to invalidate `/*` (legacy, slower).
+
+Docker/nginx uses the same policy in [`docker/frontend/nginx.conf`](../../docker/frontend/nginx.conf).
 
 CloudFront should serve `index.html` for unknown paths (SPA fallback). Use the distribution’s custom error response or equivalent so client-side routes work.
 

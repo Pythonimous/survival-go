@@ -18,6 +18,8 @@ services:
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
+      args:
+        VITE_APP_BUILD_ID: ${VITE_APP_BUILD_ID:-dev}
     expose:
       - "80"
     depends_on:

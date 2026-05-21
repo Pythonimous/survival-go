@@ -1,6 +1,9 @@
 import { FEEDBACK_URL, GITHUB_REPO_URL } from "@/config/site";
+import { formatAppVersionLabel } from "@/config/version";
 
 export default function AppFooter() {
+  const versionLabel = formatAppVersionLabel();
+
   return (
     <footer className="app-footer">
       <p className="app-footer__note">
@@ -20,6 +23,9 @@ export default function AppFooter() {
           Source on GitHub
         </a>
       </nav>
+      <p className="app-footer__version" aria-label={`Application version ${versionLabel}`}>
+        {versionLabel}
+      </p>
     </footer>
   );
 }

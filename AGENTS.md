@@ -68,7 +68,7 @@ Notes:
 
 ## Current TODO focus (next open items)
 
-- Cache busting for static assets (frontend deploy/CDN) so users pick up new builds reliably after releases.
+- Better mobile support (layout, touch, viewport) for play on phones and small tablets.
 
 ## Maintenance expectations for this file
 

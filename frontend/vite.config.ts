@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+import { buildIdIndexHtmlPlugin } from "./vite-plugin-build-id";
 import { ortWasmDevMiddleware } from "./vite-plugin-ort-wasm-dev";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
@@ -19,9 +20,14 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 // Set `VITE_DEV_HMR=1` to re-enable HMR for fast React iteration when you're
 // not actively debugging the ONNX worker startup path.
 const hmrEnabled = process.env.VITE_DEV_HMR === "1";
+const appBuildId = (process.env.VITE_APP_BUILD_ID ?? "").trim();
 
 export default defineConfig({
-  plugins: [ortWasmDevMiddleware(), react()],
+  plugins: [
+    ortWasmDevMiddleware(),
+    buildIdIndexHtmlPlugin(appBuildId),
+    react(),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(rootDir, "src"),

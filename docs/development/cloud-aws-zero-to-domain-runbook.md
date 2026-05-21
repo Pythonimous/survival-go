@@ -157,8 +157,10 @@ cd survival-go
 First start (builds frontend/backend images; duration depends on network and cache):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+./scripts/docker_compose.sh -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
+
+This sets `VITE_APP_BUILD_ID` from the repo’s git short SHA so each deploy busts browser cache for unhashed static assets (`coi-serviceworker.js`, `/wasm/*`).
 
 `docker-compose.prod.yml` binds the app to **127.0.0.1:9080** (not 8080 — local compose uses 8080) so only Caddy faces the public internet.
 
@@ -242,7 +244,7 @@ Summary:
 
 ```bash
 VITE_ONNX_MODEL_BASE_URL="https://models.example.com/kaya/v0.2.2" \
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+./scripts/docker_compose.sh -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 Use the CloudFront domain (`https://d….cloudfront.net/kaya/v0.2.2`) if you skip a custom `models.` hostname. Keep `VITE_ONNX_MODEL_FILENAME_PREFIX` at default unless you renamed files during mirroring.
@@ -256,7 +258,7 @@ SSH to the server:
 ```bash
 cd ~/survival-go
 git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+./scripts/docker_compose.sh -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 Optional smoke from laptop (needs Python + repo):
@@ -324,7 +326,7 @@ Until then, the single-VM path matches the repo’s Docker packaging and is enou
 - [ ] Security group: 22 (my IP), 80, 443
 - [ ] Namecheap A record `play` → Elastic IP
 - [ ] Docker + compose plugin on server
-- [ ] `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
+- [ ] `./scripts/docker_compose.sh -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
 - [ ] `curl http://127.0.0.1:9080/health` on server
 - [ ] Caddy → `https://play.<domain>`
 - [ ] Browser: presets, move, engine reply

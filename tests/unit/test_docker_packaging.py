@@ -81,6 +81,36 @@ def test_frontend_nginx_serves_wasm_assets_without_spa_fallback() -> None:
 
 
 @pytest.mark.unit
+def test_frontend_dockerfile_bakes_vite_app_build_id() -> None:
+    text = FRONTEND_DOCKERFILE.read_text(encoding="utf-8")
+    assert "ARG VITE_APP_BUILD_ID" in text
+    assert "ENV VITE_APP_BUILD_ID" in text
+    build_idx = text.find("RUN npm run build")
+    env_idx = text.find("ENV VITE_APP_BUILD_ID")
+    assert build_idx != -1 and env_idx != -1
+    assert env_idx < build_idx
+
+
+@pytest.mark.unit
+def test_compose_frontend_passes_vite_app_build_id_build_arg() -> None:
+    text = COMPOSE_FILE.read_text(encoding="utf-8")
+    assert "VITE_APP_BUILD_ID" in text
+    frontend_idx = text.find("frontend:")
+    build_args_idx = text.find("args:", frontend_idx)
+    assert build_args_idx != -1, "frontend service should declare build args"
+
+
+@pytest.mark.unit
+def test_docker_compose_helper_exports_build_id_from_git() -> None:
+    helper = PROJECT_ROOT / "scripts" / "docker_compose.sh"
+    assert helper.is_file(), "scripts/docker_compose.sh is missing"
+    text = helper.read_text(encoding="utf-8")
+    assert "VITE_APP_BUILD_ID" in text
+    assert "git" in text
+    assert "docker compose" in text
+
+
+@pytest.mark.unit
 def test_frontend_dockerfile_copies_scripts_before_npm_ci() -> None:
     """postinstall runs copy-runtime-assets; scripts must exist before npm ci."""
     text = FRONTEND_DOCKERFILE.read_text(encoding="utf-8")
@@ -119,6 +149,7 @@ def test_docker_compose_doc_covers_build_and_health() -> None:
         "GET /health",
         "browser-inference-design.md",
         "local-run.md",
+        "VITE_APP_BUILD_ID",
     )
     for needle in required:
         assert needle in text, f"missing {needle!r} in docker-compose.md"

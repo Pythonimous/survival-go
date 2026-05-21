@@ -20,12 +20,14 @@ def test_cloud_frontend_static_doc_exists_and_covers_build_and_publish() -> None
     text = FRONTEND_DOC.read_text(encoding="utf-8")
     required = (
         "VITE_API_BASE_URL",
+        "VITE_APP_BUILD_ID",
         "scripts/build_frontend.sh",
         "scripts/publish_frontend_s3.sh",
         "npm run build",
         "frontend/dist",
         "S3",
         "CloudFront",
+        "Cache-Control",
         "CORS_ALLOW_ORIGINS",
         "cloud-aws-ecs-topology.md",
     )
@@ -45,8 +47,27 @@ def test_build_frontend_script_runs_vite_production_build() -> None:
 def test_publish_frontend_script_syncs_dist_to_s3() -> None:
     assert PUBLISH_SCRIPT.is_file(), "scripts/publish_frontend_s3.sh is missing"
     text = PUBLISH_SCRIPT.read_text(encoding="utf-8")
-    assert "aws s3 sync" in text
+    assert "publish_frontend_dist_to_s3" in text
     assert "frontend/dist" in text
+
+
+@pytest.mark.unit
+def test_publish_frontend_script_applies_tiered_cache_control() -> None:
+    text = PUBLISH_SCRIPT.read_text(encoding="utf-8")
+    cache_lib = PROJECT_ROOT / "scripts" / "lib" / "frontend_static_cache.sh"
+    assert cache_lib.is_file(), "scripts/lib/frontend_static_cache.sh is missing"
+    assert "frontend_static_cache.sh" in text
+    cache_text = cache_lib.read_text(encoding="utf-8")
+    assert "no-cache" in cache_text
+    assert "immutable" in cache_text
+    assert "index.html" in cache_text
+    assert "assets/" in cache_text
+
+
+@pytest.mark.unit
+def test_build_frontend_script_exports_build_id() -> None:
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert "VITE_APP_BUILD_ID" in text
 
 
 @pytest.mark.unit

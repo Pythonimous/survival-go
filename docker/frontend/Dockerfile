@@ -6,6 +6,12 @@ COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/scripts/ ./scripts/
 RUN npm ci
 COPY frontend/ ./
+
+# Baked at image build time (git short SHA from host via compose build-arg).
+# Used to cache-bust coi-serviceworker.js and /wasm/* in the static bundle.
+ARG VITE_APP_BUILD_ID=dev
+ENV VITE_APP_BUILD_ID=${VITE_APP_BUILD_ID}
+
 RUN npm run build
 
 FROM nginx:1.27-alpine

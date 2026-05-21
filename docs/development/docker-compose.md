@@ -23,8 +23,10 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 ## Quick start
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+./scripts/docker_compose.sh -f docker-compose.yml -f docker-compose.local.yml up --build
 ```
+
+The helper sets `VITE_APP_BUILD_ID` from the current git short SHA (or `dev`) so the frontend image bakes cache-bust query params into `coi-serviceworker.js` and `/wasm/*`. You can export `VITE_APP_BUILD_ID` yourself or pass the same build-arg via plain `docker compose` if you prefer.
 
 Verify (`GET /health` and presets via nginx):
 

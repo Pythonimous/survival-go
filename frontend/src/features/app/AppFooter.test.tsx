@@ -18,6 +18,12 @@ describe("AppFooter", () => {
     expect(screen.getByText(/not on the game server/i)).toBeInTheDocument();
   });
 
+  it("shows the application version label", () => {
+    render(<AppFooter />);
+
+    expect(screen.getByText(/^v\d+\.\d+\.\d+/)).toBeInTheDocument();
+  });
+
   it("links to the repository and feedback channel", () => {
     render(<AppFooter />);
 
