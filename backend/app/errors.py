@@ -21,6 +21,9 @@ class ErrorCode(str, Enum):
     INVALID_OWNERSHIP_LENGTH = "invalid_ownership_length"
     INVALID_MISCVALUE_LENGTH = "invalid_miscvalue_length"
     NO_LEGAL_ENGINE_MOVES = "no_legal_engine_moves"
+    RATE_LIMITED = "rate_limited"
+    TOO_MANY_GAMES = "too_many_games"
+    PAYLOAD_TOO_LARGE = "payload_too_large"
     VALIDATION_ERROR = "validation_error"
     INTERNAL_ERROR = "internal_error"
 

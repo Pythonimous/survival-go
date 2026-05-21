@@ -1188,8 +1188,8 @@
 
 ## Frontend display version (2026-05-21)
 
-- Footer shows `v` + `frontend/package.json` semver; currently **`1.0.0-beta.1`** until stable release.
-- Production Docker builds append git short SHA (`v1.0.0-beta.1 · abc123`).
+- Footer shows `v` + `frontend/package.json` semver; currently **`1.0.0-beta.2`** until stable release.
+- Production Docker builds append git short SHA (`v1.0.0-beta.2 · abc123`).
 
 ## Docker frontend build id for EC2 (2026-05-21)
 
@@ -1206,3 +1206,10 @@
 - **Fix during close-phase:** `vite-plugin-build-id.test.ts` uses a typed `IndexHtmlTransformContext` stub so `tsc --noEmit` passes the shudan build gate.
 - **Validation:** `pytest -m lint`, `mypy .`, `pytest -m "unit or integration"` (335 passed), `npm --prefix frontend test -- --run` (170 passed), frontend `npm run build`.
 - **Next focus (§11):** mobile layout/touch/viewport support.
+
+## API abuse hardening (2026-05-21)
+
+- **Edge:** `docker/frontend/nginx.conf` is now a full `/etc/nginx/nginx.conf` with `limit_req_zone` for `POST /api/games` (3/min, burst 2) and write routes (20/min, burst 8), `client_max_body_size` 8m on analyze/engine-move, client IP from `X-Forwarded-For`.
+- **App:** `backend/app/abuse_limits.py` — `RateLimitMiddleware` mirrors limits; `InMemoryGameService` enforces `MAX_ACTIVE_GAMES_GLOBAL` / `MAX_ACTIVE_GAMES_PER_IP` on create (tracked via `X-Forwarded-For`).
+- **Errors:** `rate_limited` (429), `payload_too_large` (413), `too_many_games` (503).
+- **Config:** `API_CREATE_RATE_PER_MINUTE`, `API_WRITE_RATE_PER_MINUTE`, `API_MAX_REQUEST_BODY_BYTES`, `MAX_ACTIVE_GAMES_*` in `backend/app/config.py` and [environment.md](docs/development/environment.md).

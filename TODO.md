@@ -212,7 +212,7 @@ Done when: a new local user can install, run, play a scenario, and debug setup i
 
 ## 11. Product backlog
 - [x] Cache busting for static assets (frontend deploy / CDN) so users pick up new builds reliably after releases.
-- [ ] API request authorization (make sure anyone malicious can't just get a payload and bombard the server with requests).
+- [x] API request authorization (make sure anyone malicious can't just get a payload and bombard the server with requests).
 - [ ] Better mobile support (layout, touch, viewport) for play on phones and small tablets.
 - [ ] Human-strength KataGo models for weaker play; upstream weights exist but likely need ONNX conversion and manifest/CDN wiring before they can ship like Kaya variants.
 - [ ] Test no-GPU / no WebGPU path: verify WASM (or weakest-variant) fallback, model load, **Start game**, and full play on devices without usable GPU acceleration.

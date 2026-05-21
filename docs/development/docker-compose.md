@@ -7,7 +7,7 @@ Run the full stack in containers without installing Python or Node on the host. 
 | Service | Role |
 |---------|------|
 | `backend` | FastAPI (game state, Survival semantics) |
-| `frontend` | Built React app + nginx; proxies `/api` and `/health` to the backend |
+| `frontend` | Built React app + nginx; proxies `/api` and `/health` to the backend; applies conservative per-IP rate limits on write routes |
 
 Open **http://127.0.0.1:8080/** after:
 

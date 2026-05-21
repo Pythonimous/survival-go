@@ -13,6 +13,7 @@ FastAPI backend for Survival Go game state, rules, and Survival semantics. Defau
 - **Inference boundary:** `POST /analyze` and `POST /engine-move` require **browser ONNX raw tensors** in the JSON body. There is no server-side KataGo inference path.
 - **Raw tensor shapes (19×19):** `policy` length `2172` (`362` moves × `6` heads), `ownership` length `361`, optional `value` length `3`, optional `miscvalue` length `10`. Ownership values are logits in `[-1, 1]` before the backend maps them to `p_black` in `[0, 1]`.
 - **Errors:** Failures return `{"detail": {"code": "<machine_code>", "message": "<human text>"}}`. Stable codes include `game_not_found`, `illegal_move`, `wrong_turn_human`, `wrong_turn_engine`, `invalid_policy_length`, `validation_error`, and others in `backend/app/errors.py`.
+- **Abuse limits (public deploys):** Write routes are rate-limited per client IP (nginx on Docker/VM, FastAPI middleware as safety net). Responses use **429** (`rate_limited`), **413** (`payload_too_large`), or **503** (`too_many_games`) when limits are exceeded. Tune via env vars in [environment.md](development/environment.md).
 
 ## `GET /health`
 

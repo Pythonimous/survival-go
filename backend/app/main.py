@@ -6,6 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from backend.app.abuse_limits import (
+    AbuseLimitSettings,
+    RateLimitMiddleware,
+    client_ip_from_request,
+)
 from backend.app.config import get_settings
 from backend.app.readiness import ReadinessReport, run_readiness_checks
 from backend.app.exception_handlers import register_exception_handlers
@@ -202,11 +207,12 @@ def _register_create_game_route(
         response_model=CreateGameResponse,
         status_code=status.HTTP_201_CREATED,
     )
-    def create_game(payload: CreateGameRequest) -> CreateGameResponse:
+    def create_game(payload: CreateGameRequest, request: Request) -> CreateGameResponse:
         game = game_service.create_game(
             preset_id=payload.preset_id,
             human_side=payload.human_side,
             difficulty=payload.difficulty,
+            client_ip=client_ip_from_request(request),
         )
         return CreateGameResponse(game_id=game.game_id)
 
@@ -342,6 +348,15 @@ def create_app(
     resolved_game_service = game_service or InMemoryGameService(
         survival_threshold=settings.survival_threshold,
         default_top_n=settings.default_top_n,
+        max_active_games_global=settings.max_active_games_global,
+        max_active_games_per_ip=settings.max_active_games_per_ip,
+    )
+    abuse_limits = AbuseLimitSettings(
+        create_game_per_minute=settings.api_create_rate_per_minute,
+        api_write_per_minute=settings.api_write_rate_per_minute,
+        max_request_body_bytes=settings.api_max_request_body_bytes,
+        max_active_games_global=settings.max_active_games_global,
+        max_active_games_per_ip=settings.max_active_games_per_ip,
     )
     readiness_report = run_readiness_checks(
         settings=settings,
@@ -356,6 +371,7 @@ def create_app(
     application = FastAPI(title="survival-go", lifespan=lifespan)
     application.state.readiness = readiness_report
     register_exception_handlers(application)
+    application.add_middleware(RateLimitMiddleware, settings=abuse_limits)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,

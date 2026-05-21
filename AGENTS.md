@@ -69,6 +69,7 @@ Notes:
 ## Current TODO focus (next open items)
 
 - Better mobile support (layout, touch, viewport) for play on phones and small tablets.
+- API abuse limits: conservative per-IP rate limits + game caps (nginx edge + FastAPI middleware); tune via `API_*` / `MAX_ACTIVE_GAMES_*` env vars — see [environment.md](docs/development/environment.md).
 
 ## Maintenance expectations for this file
 

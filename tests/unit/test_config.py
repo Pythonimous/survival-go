@@ -79,6 +79,17 @@ def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+def test_settings_loads_abuse_limit_defaults() -> None:
+    settings = Settings()
+
+    assert settings.api_create_rate_per_minute == 3
+    assert settings.api_write_rate_per_minute == 20
+    assert settings.api_max_request_body_bytes == 8 * 1024 * 1024
+    assert settings.max_active_games_global == 50
+    assert settings.max_active_games_per_ip == 5
+
+
+@pytest.mark.unit
 def test_create_app_starts_without_katago_env(monkeypatch: pytest.MonkeyPatch) -> None:
     import importlib
     import sys

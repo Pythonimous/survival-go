@@ -212,6 +212,26 @@ echo "${PLAY_HOST} {
 sudo systemctl reload caddy
 ```
 
+**Caddy changes for API abuse limits:** **none** beyond this normal TLS reverse proxy.
+
+| Layer | Role |
+|-------|------|
+| **Caddy** (host) | Terminates HTTPS; `reverse_proxy` **automatically** sets `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` on requests to the upstream ([Caddy `reverse_proxy` docs](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)). Do **not** add a Caddy `rate_limit` — limits live in nginx/backend below. |
+| **nginx** (frontend container) | Per-IP `limit_req` and `client_max_body_size` on `/api/*` — [`docker/frontend/nginx.conf`](../../docker/frontend/nginx.conf). Uses the first `X-Forwarded-For` hop as the client key. |
+| **FastAPI** (backend container) | Safety-net rate limiter + active-game caps — [environment.md](environment.md). |
+
+After `git pull`, **rebuild the frontend image** so nginx limit changes take effect (Caddy reload alone is not enough):
+
+```bash
+./scripts/docker_compose.sh -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Optional backend overrides on the VM (copy [`.env.docker.example`](../../.env.docker.example) to `.env` beside the compose files): `API_CREATE_RATE_PER_MINUTE`, `API_WRITE_RATE_PER_MINUTE`, `MAX_ACTIVE_GAMES_PER_IP`, etc.
+
+**Verify per-client limits (from your laptop, through HTTPS):** after several quick “New game” attempts from one network, `POST /api/games` should return **429** with `"code":"rate_limited"`. Another network (or phone off Wi‑Fi) should not inherit that bucket. If **all** users hit 429 together, nginx is likely keying on one shared address — confirm only Caddy listens on 80/443, port **9080** stays on `127.0.0.1`, and reload Caddy after any Caddyfile change.
+
+**Cloudflare (or another CDN) in front of this VM later:** configure Caddy [global `trusted_proxies`](https://caddyserver.com/docs/caddyfile/options#trusted-proxies) (and optionally `client_ip_headers` for `CF-Connecting-IP`) so upstream headers reflect the end user, not the CDN edge.
+
 Caddy obtains a Let's Encrypt certificate on first request (ports 80/443 must be open — §1.2).
 
 **Checkpoint from your laptop:**
@@ -281,6 +301,7 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 | Knob | Where |
 |------|--------|
 | Survival defaults | `SURVIVAL_THRESHOLD`, `DEFAULT_TOP_N` in compose env if needed |
+| API rate limits / game caps | nginx in frontend image (rebuild after config change); backend `.env` overrides — [environment.md](environment.md) |
 | More CPU/RAM | Change instance type → stop instance → change type → start |
 | Model origin | `VITE_ONNX_MODEL_BASE_URL` (+ optional `VITE_ONNX_MODEL_FILENAME_PREFIX`) at frontend build time |
 | Disk full | `docker system prune` (careful) or enlarge volume |
@@ -288,7 +309,7 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 
 **Sessions:** Games live in backend memory. Rebooting the VM ends in-progress games (same as local). Engine inference runs in each user's browser (ONNX).
 
-**Security basics:** SSH restricted to your IP; app listens on localhost **9080** only; keep Ubuntu updated (`sudo apt upgrade`).
+**Security basics:** SSH restricted to your IP; app listens on localhost **9080** only; keep Ubuntu updated (`sudo apt upgrade`). Caddy terminates TLS and should forward client IPs via `X-Forwarded-For` (§4). The frontend nginx container applies conservative per-IP rate limits on `POST /api/*` (defaults: 3 create-game/min, 20 write/min, 5 active games/IP) and caps request body size — see [`docker/frontend/nginx.conf`](../../docker/frontend/nginx.conf) and [environment.md](environment.md). EC2 security groups do **not** replace API abuse protection — ports 80/443 must stay public for players.
 
 ---
 
@@ -304,6 +325,8 @@ SMOKE_TIMEOUT_SECONDS=90 python3 scripts/smoke_deploy.py \
 | HTTPS certificate fails | DNS A record points to Elastic IP; ports 80/443 open |
 | Site loads, engine never moves | Browser devtools network tab: ONNX model fetches. If using default HF origin, check outbound access/rate limits. If self-hosting, verify `VITE_ONNX_MODEL_BASE_URL` and that CDN URLs return `200` for all variants. |
 | Out of disk on first build | 20–30 GiB is usually enough; increase if Docker cache grows |
+| `429 rate_limited` for all users at once | Caddy not forwarding `X-Forwarded-For`; reload Caddyfile from §4 and rebuild frontend container |
+| `429` / `503 too_many_games` for one tab only | Expected under abuse limits; see [troubleshooting.md](troubleshooting.md#api-rate-limits-429--503) |
 
 ---
 
@@ -328,6 +351,7 @@ Until then, the single-VM path matches the repo’s Docker packaging and is enou
 - [ ] Docker + compose plugin on server
 - [ ] `./scripts/docker_compose.sh -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
 - [ ] `curl http://127.0.0.1:9080/health` on server
+- [ ] Caddyfile proxies `127.0.0.1:9080` with client IP forwarded (§4)
 - [ ] Caddy → `https://play.<domain>`
 - [ ] Browser: presets, move, engine reply
 - [ ] Optional: `smoke_deploy.py` against `https://play.<domain>`

@@ -66,7 +66,22 @@ def test_frontend_nginx_proxies_api_and_health() -> None:
     assert "/health" in nginx
     frontend = FRONTEND_DOCKERFILE.read_text(encoding="utf-8")
     assert "nginx.conf" in frontend
+    assert "/etc/nginx/nginx.conf" in frontend
     assert "npm run build" in frontend
+
+
+@pytest.mark.unit
+def test_frontend_nginx_defines_api_abuse_limits() -> None:
+    nginx = NGINX_CONF.read_text(encoding="utf-8")
+    assert "limit_req_zone" in nginx
+    assert "zone=api_create" in nginx
+    assert "rate=3r/m" in nginx
+    assert "zone=api_write" in nginx
+    assert "rate=20r/m" in nginx
+    assert "limit_req_status 429" in nginx
+    assert "client_max_body_size 8m" in nginx
+    assert "location = /api/games" in nginx
+    assert "$http_x_forwarded_for" in nginx
 
 
 @pytest.mark.unit

@@ -146,15 +146,24 @@ class InMemoryGameService:
         survival_threshold: float,
         default_max_visits: int = 20,
         default_top_n: int = 8,
+        max_active_games_global: int = 50,
+        max_active_games_per_ip: int = 5,
         random_source: RandomSource | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         if default_top_n < 1:
             raise ValueError("default_top_n must be at least 1")
+        if max_active_games_global < 1:
+            raise ValueError("max_active_games_global must be at least 1")
+        if max_active_games_per_ip < 1:
+            raise ValueError("max_active_games_per_ip must be at least 1")
         self._games: dict[str, GameState] = {}
+        self._game_client_ips: dict[str, str] = {}
         self._survival_threshold = survival_threshold
         self._default_max_visits = default_max_visits
         self._default_top_n = default_top_n
+        self._max_active_games_global = max_active_games_global
+        self._max_active_games_per_ip = max_active_games_per_ip
         self._random_source = random_source or random.Random()
         self._logger = logger or get_game_logger()
 
@@ -167,7 +176,9 @@ class InMemoryGameService:
         preset_id: str,
         human_side: StoneColor,
         difficulty: DifficultyConfig | None = None,
+        client_ip: str | None = None,
     ) -> GameState:
+        self._enforce_active_game_caps(client_ip=client_ip)
         try:
             preset = get_preset_by_id(preset_id)
         except PresetLoadError as exc:
@@ -191,6 +202,7 @@ class InMemoryGameService:
             difficulty=(difficulty or self._default_difficulty()).model_copy(deep=True),
         )
         self._games[game_id] = game
+        self._game_client_ips[game_id] = client_ip or "unknown"
         self._log_event(
             logging.INFO,
             "game.created",
@@ -202,8 +214,23 @@ class InMemoryGameService:
         )
         return game
 
+    def _enforce_active_game_caps(self, *, client_ip: str | None) -> None:
+        if len(self._games) >= self._max_active_games_global:
+            raise GameServiceError(
+                "server has too many active games; try again later",
+                code=ErrorCode.TOO_MANY_GAMES,
+            )
+        ip = client_ip or "unknown"
+        active_for_ip = sum(1 for addr in self._game_client_ips.values() if addr == ip)
+        if active_for_ip >= self._max_active_games_per_ip:
+            raise GameServiceError(
+                "too many active games for this client; finish or delete games first",
+                code=ErrorCode.TOO_MANY_GAMES,
+            )
+
     def delete_game(self, game_id: str) -> None:
         game = self._games.pop(game_id, None)
+        self._game_client_ips.pop(game_id, None)
         if game is None:
             self._log_not_found(operation="delete_game", game_id=game_id)
             raise GameNotFoundError(f"game not found: {game_id}")
@@ -217,6 +244,7 @@ class InMemoryGameService:
     def shutdown(self) -> None:
         count = len(self._games)
         self._games.clear()
+        self._game_client_ips.clear()
         self._log_event(logging.INFO, "game.shutdown", games_cleared=count)
 
     def get_game(self, game_id: str) -> GameState:

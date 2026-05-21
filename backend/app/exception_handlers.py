@@ -16,6 +16,12 @@ from backend.app.game_service import GameNotFoundError, GameServiceError
 def _status_code_for_game_error(exc: GameServiceError) -> int:
     if isinstance(exc, GameNotFoundError):
         return 404
+    if exc.code is ErrorCode.RATE_LIMITED:
+        return 429
+    if exc.code is ErrorCode.TOO_MANY_GAMES:
+        return 503
+    if exc.code is ErrorCode.PAYLOAD_TOO_LARGE:
+        return 413
     return 400
 
 

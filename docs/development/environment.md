@@ -18,6 +18,11 @@ Templates:
 | `SURVIVAL_THRESHOLD` | `0.95` | `(0, 1]` | Counts unresolved points where `p_black` is strictly below this value (`survival_score` = that count). Does not change resign thresholds (`0.01` / `0.99` on `min_black_probability`). See [survival-difficulty-model.md](survival-difficulty-model.md). |
 | `DEFAULT_TOP_N` | `8` | `≥ 1` | Default engine-move shortlist size when a game is created without custom difficulty. |
 | `CORS_ALLOW_ORIGINS` | local Vite + Docker Compose origins | comma-separated URLs | Required when the browser calls the API on another host ([cloud-frontend-static.md](cloud-frontend-static.md)). |
+| `API_CREATE_RATE_PER_MINUTE` | `3` | `≥ 1` | App safety-net: max `POST /api/games` per client IP per minute. Nginx enforces a matching edge limit in Docker/VM deploys. |
+| `API_WRITE_RATE_PER_MINUTE` | `20` | `≥ 1` | App safety-net: max `POST` move/resign/analyze/engine-move per client IP per minute (~one engine turn every 3s). |
+| `API_MAX_REQUEST_BODY_BYTES` | `8388608` (8 MiB) | `≥ 1024` | Rejects oversized `Content-Length` on write routes before the body is read. |
+| `MAX_ACTIVE_GAMES_GLOBAL` | `50` | `≥ 1` | Cap on in-memory games for the process (protects small VMs). |
+| `MAX_ACTIVE_GAMES_PER_IP` | `5` | `≥ 1` | Cap on concurrent games per client IP (`X-Forwarded-For` first hop when present). |
 
 Inference runs in the **browser** via ONNX Runtime. The backend does not load KataGo binaries or models. See [browser-inference-design.md](browser-inference-design.md) and [onnx-model-artifacts.md](onnx-model-artifacts.md).
 

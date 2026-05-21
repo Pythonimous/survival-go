@@ -33,6 +33,26 @@ class Settings(BaseSettings):
         ],
         alias="CORS_ALLOW_ORIGINS",
     )
+    api_create_rate_per_minute: int = Field(
+        default=3,
+        alias="API_CREATE_RATE_PER_MINUTE",
+    )
+    api_write_rate_per_minute: int = Field(
+        default=20,
+        alias="API_WRITE_RATE_PER_MINUTE",
+    )
+    api_max_request_body_bytes: int = Field(
+        default=8 * 1024 * 1024,
+        alias="API_MAX_REQUEST_BODY_BYTES",
+    )
+    max_active_games_global: int = Field(
+        default=50,
+        alias="MAX_ACTIVE_GAMES_GLOBAL",
+    )
+    max_active_games_per_ip: int = Field(
+        default=5,
+        alias="MAX_ACTIVE_GAMES_PER_IP",
+    )
 
     @field_validator("survival_threshold")
     @classmethod
@@ -46,6 +66,25 @@ class Settings(BaseSettings):
     def _default_top_n_positive(cls, value: int) -> int:
         if value < 1:
             raise ValueError("DEFAULT_TOP_N must be at least 1")
+        return value
+
+    @field_validator(
+        "api_create_rate_per_minute",
+        "api_write_rate_per_minute",
+        "max_active_games_global",
+        "max_active_games_per_ip",
+    )
+    @classmethod
+    def _positive_int_setting(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("rate and game cap settings must be at least 1")
+        return value
+
+    @field_validator("api_max_request_body_bytes")
+    @classmethod
+    def _max_request_body_positive(cls, value: int) -> int:
+        if value < 1024:
+            raise ValueError("API_MAX_REQUEST_BODY_BYTES must be at least 1024")
         return value
 
     @field_validator("cors_allow_origins", mode="before")

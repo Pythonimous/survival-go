@@ -45,6 +45,27 @@ If `/health` shows `"ready":false`, inspect the `checks` object (see [Preset bun
 
 ---
 
+## API rate limits (429 / 503)
+
+### Symptoms
+
+- `POST /api/games` or move/analyze calls return **429** with `"code":"rate_limited"`.
+- Many new games from one client return **503** with `"code":"too_many_games"`.
+- Oversized POST bodies return **413** with `"code":"payload_too_large"`.
+
+### Context
+
+Public deploys apply **conservative** per-IP limits so scripted floods cannot exhaust a small VM. Normal play stays well under defaults. Docker/VM nginx enforces edge limits; the FastAPI app mirrors them as a safety net.
+
+### Fixes
+
+1. **Legitimate heavy use:** raise limits in backend env (see [environment.md](environment.md)): `API_CREATE_RATE_PER_MINUTE`, `API_WRITE_RATE_PER_MINUTE`, `MAX_ACTIVE_GAMES_PER_IP`, `MAX_ACTIVE_GAMES_GLOBAL`.
+2. **Docker/VM:** nginx limits live in [`docker/frontend/nginx.conf`](../../docker/frontend/nginx.conf); rebuild the frontend image after changing zones.
+3. **Behind a reverse proxy:** ensure `X-Forwarded-For` carries the real client IP so per-IP caps apply to users, not the proxy alone.
+4. **Stuck games:** `DELETE /api/games/{game_id}` frees a per-IP slot; rebooting the VM clears all in-memory games.
+
+---
+
 ## CORS errors
 
 ### Symptoms
